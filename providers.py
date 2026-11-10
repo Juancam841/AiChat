@@ -140,7 +140,8 @@ def ask_model_with_tools(
     provider,
     model,
     messages,
-    max_iterations=5
+    max_iterations=5,
+    tool_names=None
 ):
     # 1. Validar proveedor y modelo
     if provider not in MODELS:
@@ -179,6 +180,13 @@ def ask_model_with_tools(
     import tools_web_search
 
     available_tools = get_available_tools()
+
+    if tool_names is not None:
+        allowed_tool_names = set(tool_names)
+        available_tools = [
+            tool for tool in available_tools
+            if tool["name"] in allowed_tool_names
+        ]
 
     if not available_tools:
         raise ValueError(
@@ -672,11 +680,19 @@ def ask_model_with_fallback(messages, strategy="free_first"):
 
         try:
 
-            response = ask_model(
-                provider=provider,
-                model=model,
-                messages=messages
-            )
+            if candidate.get("supports_tools"):
+                response = ask_model_with_tools(
+                    provider=provider,
+                    model=model,
+                    messages=messages,
+                    tool_names=["calculator"]
+                )
+            else:
+                response = ask_model(
+                    provider=provider,
+                    model=model,
+                    messages=messages
+                )
 
             return {
                 "response": response,

@@ -3,4 +3,5 @@ uvicorn[standard]
 litellm
 python-dotenv
 tavily-python
+jsonschema
 

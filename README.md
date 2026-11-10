@@ -41,7 +41,7 @@ Abre la dirección que Vite muestra en la terminal. La API escucha en `http://12
 
 ## Proveedores
 
-Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles se definen en `models.py`. La búsqueda web requiere Tavily y se activa desde la casilla **Buscar en la web** del chat.
+Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles se definen en `models.py`. La búsqueda web requiere Tavily y se activa desde la casilla **Buscar en la web** del chat. En modelos compatibles, la calculadora se invoca automáticamente cuando el modelo la necesita.
 
 La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`, archivos de base de datos ni artefactos de dependencias.
 

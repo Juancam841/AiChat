@@ -201,3 +201,10 @@ def get_available_models(provider=None):
         for provider, models in MODELS.items()
     }
 
+
+def supports_tools(provider, model_id):
+    return any(
+        item["id"] == model_id and item.get("supports_tools", False)
+        for item in MODELS.get(provider, [])
+    )
+

@@ -10,12 +10,13 @@ from config import get_configured_providers
 
 from providers import (
     ask_model,
+    ask_model_with_tools,
     ask_model_with_fallback,
     ask_model_with_search_fallback,
     ask_model_with_manual_search
 )
 
-from models import get_available_models
+from models import get_available_models, supports_tools
 from model_router import select_model
 from quota_manager import get_model_quotas, is_quota_available
 
@@ -340,12 +341,19 @@ def chat(request: ChatRequest):
                 search_results = result["response"]["results"]
 
             else:
-
-                response = ask_model(
-                    provider=provider,
-                    model=model,
-                    messages=messages
-                )
+                if supports_tools(provider, model):
+                    response = ask_model_with_tools(
+                        provider=provider,
+                        model=model,
+                        messages=messages,
+                        tool_names=["calculator"]
+                    )
+                else:
+                    response = ask_model(
+                        provider=provider,
+                        model=model,
+                        messages=messages
+                    )
 
         else:
 
