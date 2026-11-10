@@ -286,14 +286,11 @@ def chat(request: ChatRequest):
             provider = selected["provider"]
             model = selected["model"]
 
-        # 2. Crear o recuperar conversación
+        # 2. Recuperar conversación existente o preparar una nueva
 
         if request.conversation_id is None:
-
-            conversation_id = create_conversation(
-                provider=provider,
-                model=model
-            )
+            conversation_id = None
+            messages = []
 
         else:
 
@@ -309,11 +306,7 @@ def chat(request: ChatRequest):
                     detail="La conversación no existe."
                 )
 
-        # 3. Recuperar historial
-
-        messages = get_conversation_messages(
-            conversation_id
-        )
+            messages = get_conversation_messages(conversation_id)
 
         # 4. Agregar mensaje del usuario
 
@@ -381,6 +374,13 @@ def chat(request: ChatRequest):
                 response = result["response"]
                 provider = result["provider"]
                 model = result["model"]
+
+        # Crear conversaciones nuevas solo después de una respuesta correcta.
+        if conversation_id is None:
+            conversation_id = create_conversation(
+                provider=provider,
+                model=model
+            )
 
         # 6. Guardar mensaje del usuario
 
