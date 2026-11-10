@@ -441,6 +441,7 @@ function App() {
             <textarea
               placeholder="Escribe tu mensaje..."
               rows={1}
+              maxLength={24000}
               value={input}
               onChange={event => setInput(event.target.value)}
               disabled={loading}

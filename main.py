@@ -4,6 +4,10 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from conversation_context import (
+    MAX_CONTEXT_CHARACTERS,
+    trim_conversation_history
+)
 
 from usage_manager import get_usage_summary
 from config import get_configured_providers
@@ -81,7 +85,10 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
-    message: str = Field(min_length=1)
+    message: str = Field(
+        min_length=1,
+        max_length=MAX_CONTEXT_CHARACTERS
+    )
     strategy: Literal[
         "free_first",
         "best_available",
@@ -308,14 +315,20 @@ def chat(request: ChatRequest):
 
             messages = get_conversation_messages(conversation_id)
 
-        # 4. Agregar mensaje del usuario
+        # 4. Limitar el contexto enviado al modelo, sin borrar el historial guardado
+        messages = trim_conversation_history(
+            messages,
+            max_characters=MAX_CONTEXT_CHARACTERS - len(request.message)
+        )
+
+        # 5. Agregar mensaje del usuario
 
         messages.append({
             "role": "user",
             "content": request.message
         })
 
-        # 5. Consultar modelo
+        # 6. Consultar modelo
 
         search_results = []
 
@@ -382,7 +395,7 @@ def chat(request: ChatRequest):
                 model=model
             )
 
-        # 6. Guardar mensaje del usuario
+        # 7. Guardar mensaje del usuario
 
         save_message(
             conversation_id,
@@ -390,7 +403,7 @@ def chat(request: ChatRequest):
             request.message
         )
 
-        # 7. Asignar título automático
+        # 8. Asignar título automático
 
         if request.conversation_id is None:
 
@@ -406,7 +419,7 @@ def chat(request: ChatRequest):
                 title
             )
 
-        # 8. Guardar respuesta del asistente
+        # 9. Guardar respuesta del asistente
 
         save_message(
             conversation_id,
@@ -414,7 +427,7 @@ def chat(request: ChatRequest):
             response
         )
 
-        # 9. Actualizar proveedor y modelo utilizados
+        # 10. Actualizar proveedor y modelo utilizados
 
         update_conversation_model(
             conversation_id,
@@ -422,7 +435,7 @@ def chat(request: ChatRequest):
             model
         )
 
-        # 10. Devolver respuesta y fuentes
+        # 11. Devolver respuesta y fuentes
 
         return {
             "conversation_id": conversation_id,

@@ -81,6 +81,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - `/chat` conecta `ask_model_with_tools` para modelos compatibles en modo manual y automático. En el chat normal solo expone la calculadora; la búsqueda web continúa bajo el control de la casilla de búsqueda.
 - Las conversaciones nuevas se crean después de recibir una respuesta del modelo, evitando registros vacíos cuando falla la consulta al proveedor.
 - La búsqueda nativa registra proveedor y modelo, no el objeto completo de respuesta del proveedor.
+- El contexto enviado al modelo se limita a un máximo de 12 turnos completos y 24.000 caracteres por solicitud; la base conserva el historial íntegro.
 - `requirements.txt` declara dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 
