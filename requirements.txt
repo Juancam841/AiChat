@@ -1,7 +1,8 @@
-fastapi
-uvicorn[standard]
-litellm
-python-dotenv
-tavily-python
-jsonschema
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+litellm==1.106.6
+python-dotenv==1.2.4
+tavily-python==0.8.5
+jsonschema==4.26.0
+pydantic==2.14.2
 
