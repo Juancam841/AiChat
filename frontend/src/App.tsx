@@ -59,10 +59,10 @@ function App() {
     async function loadCatalog() {
       try {
         const data = await getProviders()
-        setProviders(data.configured)
+        setProviders(data.available)
 
-        if (data.configured.length > 0) {
-          const initialProvider = data.configured[0]
+        if (data.available.length > 0) {
+          const initialProvider = data.available[0]
           setProvider(initialProvider)
 
           const availableModels = await getModels(initialProvider)
@@ -71,6 +71,8 @@ function App() {
           if (availableModels.length > 0) {
             setModel(availableModels[0].id)
           }
+        } else {
+          setError('No hay proveedores configurados con modelos habilitados.')
         }
       } catch (err) {
         setError(

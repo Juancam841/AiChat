@@ -28,6 +28,7 @@ export interface ChatResponse {
 export interface ProvidersResponse {
   configured: string[]
   supported: string[]
+  available: string[]
 }
 
 export interface AIModel {
