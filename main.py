@@ -10,12 +10,13 @@ from config import get_configured_providers
 
 from providers import (
     ask_model,
+    ask_model_with_tools,
     ask_model_with_fallback,
     ask_model_with_search_fallback,
     ask_model_with_manual_search
 )
 
-from models import get_available_models
+from models import get_available_models, supports_tools
 from model_router import select_model
 from quota_manager import get_model_quotas, is_quota_available
 
@@ -285,14 +286,11 @@ def chat(request: ChatRequest):
             provider = selected["provider"]
             model = selected["model"]
 
-        # 2. Crear o recuperar conversación
+        # 2. Recuperar conversación existente o preparar una nueva
 
         if request.conversation_id is None:
-
-            conversation_id = create_conversation(
-                provider=provider,
-                model=model
-            )
+            conversation_id = None
+            messages = []
 
         else:
 
@@ -308,11 +306,7 @@ def chat(request: ChatRequest):
                     detail="La conversación no existe."
                 )
 
-        # 3. Recuperar historial
-
-        messages = get_conversation_messages(
-            conversation_id
-        )
+            messages = get_conversation_messages(conversation_id)
 
         # 4. Agregar mensaje del usuario
 
@@ -340,12 +334,19 @@ def chat(request: ChatRequest):
                 search_results = result["response"]["results"]
 
             else:
-
-                response = ask_model(
-                    provider=provider,
-                    model=model,
-                    messages=messages
-                )
+                if supports_tools(provider, model):
+                    response = ask_model_with_tools(
+                        provider=provider,
+                        model=model,
+                        messages=messages,
+                        tool_names=["calculator"]
+                    )
+                else:
+                    response = ask_model(
+                        provider=provider,
+                        model=model,
+                        messages=messages
+                    )
 
         else:
 
@@ -373,6 +374,13 @@ def chat(request: ChatRequest):
                 response = result["response"]
                 provider = result["provider"]
                 model = result["model"]
+
+        # Crear conversaciones nuevas solo después de una respuesta correcta.
+        if conversation_id is None:
+            conversation_id = create_conversation(
+                provider=provider,
+                model=model
+            )
 
         # 6. Guardar mensaje del usuario
 
