@@ -45,6 +45,8 @@ Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles 
 
 La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`, archivos de base de datos ni artefactos de dependencias.
 
+Para limitar el tamaño del contexto, cada solicitud admite hasta 24.000 caracteres. Al continuar una conversación, se envían como máximo los 12 turnos completos más recientes dentro de ese límite; el historial completo permanece guardado en SQLite.
+
 ## Exposición del backend
 
 La API todavía no incluye autenticación. Mantén el backend en una máquina local o en una red privada de confianza; no lo publiques directamente en Internet.
