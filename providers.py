@@ -420,19 +420,10 @@ def ask_model_with_native_search(provider, model, messages):
             api_key=api_key
         )
 
-        # REGISTRO TEMPORAL PARA DIAGNOSTICAR
-        # LA RESPUESTA COMPLETA DE GROQ
-
-        try:
-            complete_response = response.model_dump(
-                exclude_none=True
-            )
-        except AttributeError:
-            complete_response = str(response)
-
-        logger.info(
-            "RESPUESTA NATIVA COMPLETA: %s",
-            complete_response
+        logger.debug(
+            "Búsqueda web nativa completada para %s / %s",
+            provider,
+            model
         )
 
     except Exception:
