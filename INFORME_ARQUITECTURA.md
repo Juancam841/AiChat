@@ -80,6 +80,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - La interfaz envía la opción `web_search` y muestra los enlaces de las fuentes recibidas.
 - `/chat` conecta `ask_model_with_tools` para modelos compatibles en modo manual y automático. En el chat normal solo expone la calculadora; la búsqueda web continúa bajo el control de la casilla de búsqueda.
 - Las conversaciones nuevas se crean después de recibir una respuesta del modelo, evitando registros vacíos cuando falla la consulta al proveedor.
+- La búsqueda nativa registra proveedor y modelo, no el objeto completo de respuesta del proveedor.
 - `requirements.txt` declara dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 
