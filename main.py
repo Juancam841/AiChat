@@ -116,12 +116,21 @@ def health():
 
 @app.get("/providers")
 def providers():
+    configured = get_configured_providers()
+    models_by_provider = get_available_models()
+    supported = [
+        provider
+        for provider, models in models_by_provider.items()
+        if models
+    ]
+
     return {
-        "configured": get_configured_providers(),
-        "supported": [
+        "configured": configured,
+        "supported": supported,
+        "available": [
             provider
-            for provider, models in get_available_models().items()
-            if models
+            for provider in configured
+            if models_by_provider.get(provider)
         ]
     }
 
