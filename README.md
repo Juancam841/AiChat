@@ -47,6 +47,8 @@ La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`
 
 Para limitar el tamaño del contexto, cada solicitud admite hasta 24.000 caracteres. Al continuar una conversación, se envían como máximo los 12 turnos completos más recientes dentro de ese límite; el historial completo permanece guardado en SQLite.
 
+Las cuotas locales se configuran por modelo en `quota_config.py`. Cada límite puede medirse por día, mes o acumulado total; los periodos diarios y mensuales usan UTC. Los valores `None` no imponen un tope, así que define valores de `requests` o `total_tokens` para activar una cuota.
+
 ## Exposición del backend
 
 La API todavía no incluye autenticación. Mantén el backend en una máquina local o en una red privada de confianza; no lo publiques directamente en Internet.

@@ -1,14 +1,31 @@
 
+from datetime import datetime, timezone
+
 from models import MODELS
 from usage_manager import get_usage_summary
 from quota_config import QUOTA_LIMITS
 
 
+def get_quota_period_start(period):
+    now = datetime.now(timezone.utc)
+
+    if period == "day":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "all_time":
+        return None
+    else:
+        raise ValueError(
+            "El periodo de cuota debe ser day, month o all_time."
+        )
+
+    return start.isoformat()
+
+
 def get_model_quotas():
-
-    usage = get_usage_summary()
-
     quotas = {}
+    usage_by_period = {}
 
     for provider, models in MODELS.items():
 
@@ -20,18 +37,24 @@ def get_model_quotas():
             model_id = model["id"]
             key = f"{provider}/{model_id}"
 
-            consumption = usage.get(key, {
+            limits = dict(QUOTA_LIMITS.get(key, {}))
+            limits.setdefault("requests", None)
+            limits.setdefault("total_tokens", None)
+            limits.setdefault("period", "month")
+
+            period = limits["period"]
+            if period not in usage_by_period:
+                usage_by_period[period] = get_usage_summary(
+                    since=get_quota_period_start(period)
+                )
+
+            consumption = usage_by_period[period].get(key, {
                 "requests": 0,
                 "successful": 0,
                 "failed": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "total_tokens": 0
-            })
-
-            limits = QUOTA_LIMITS.get(key, {
-                "requests": None,
-                "total_tokens": None
             })
 
             quotas[key] = {

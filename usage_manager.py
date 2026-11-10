@@ -56,12 +56,12 @@ def record_usage(
         connection.close()
 
 
-def get_usage_summary():
+def get_usage_summary(since=None):
 
     connection = get_connection()
 
     try:
-        rows = connection.execute("""
+        query = """
             SELECT
                 provider,
                 model,
@@ -74,8 +74,15 @@ def get_usage_summary():
                 SUM(web_search_requests) AS web_search_requests,
                 SUM(browser_open_requests) AS browser_open_requests
             FROM usage_records
-            GROUP BY provider, model
-        """).fetchall()
+        """
+        parameters = ()
+
+        if since is not None:
+            query += " WHERE created_at >= ?"
+            parameters = (since,)
+
+        query += " GROUP BY provider, model"
+        rows = connection.execute(query, parameters).fetchall()
 
         return {
             f"{row['provider']}/{row['model']}": {

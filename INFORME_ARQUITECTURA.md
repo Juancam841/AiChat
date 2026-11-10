@@ -82,6 +82,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - Las conversaciones nuevas se crean después de recibir una respuesta del modelo, evitando registros vacíos cuando falla la consulta al proveedor.
 - La búsqueda nativa registra proveedor y modelo, no el objeto completo de respuesta del proveedor.
 - El contexto enviado al modelo se limita a un máximo de 12 turnos completos y 24.000 caracteres por solicitud; la base conserva el historial íntegro.
+- Las cuotas pueden medir consumo por día, mes o acumulado total en UTC; los topes numéricos se configuran por modelo en `quota_config.py` y permanecen sin límite mientras sean `None`.
 - `requirements.txt` declara dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 
