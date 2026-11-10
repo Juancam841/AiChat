@@ -8,6 +8,8 @@ Aplicación personal de chat multimodelo con una API FastAPI, una interfaz React
 - Node.js 20 o posterior
 - Claves de API de al menos un proveedor compatible
 
+Las versiones directas del backend están fijadas en `requirements.txt`; el frontend usa `package-lock.json`.
+
 ## Configuración
 
 Instala las dependencias del backend y crea un archivo `.env` en la raíz:
