@@ -14,6 +14,7 @@ import {
 
 import type {
   ChatResponse,
+  ChatStrategy,
   AIModel,
   Conversation,
   Message
@@ -48,7 +49,7 @@ function App() {
   const [models, setModels] = useState<AIModel[]>([])
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
-  const [strategy, setStrategy] = useState<'manual' | 'free_first'>('manual')
+  const [strategy, setStrategy] = useState<ChatStrategy>('manual')
   const [catalogLoading, setCatalogLoading] = useState(true)
 
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -310,12 +311,15 @@ function App() {
             <select
               value={strategy}
               onChange={event =>
-                setStrategy(event.target.value as 'manual' | 'free_first')
+                setStrategy(event.target.value as ChatStrategy)
               }
               disabled={loading}
             >
               <option value="manual">Manual</option>
-              <option value="free_first">Automático</option>
+              <option value="free_first">Gratis primero</option>
+              <option value="best_available" title="Usa el orden de prioridad del catálogo de modelos">
+                Mejor disponible
+              </option>
             </select>
 
             {/* Selector de proveedor */}
@@ -323,7 +327,7 @@ function App() {
               value={provider}
               onChange={handleProviderChange}
               disabled={
-                strategy === 'free_first' ||
+                strategy !== 'manual' ||
                 catalogLoading ||
                 providers.length === 0
               }
@@ -340,7 +344,7 @@ function App() {
               value={model}
               onChange={event => setModel(event.target.value)}
               disabled={
-                strategy === 'free_first' ||
+                strategy !== 'manual' ||
                 catalogLoading ||
                 models.length === 0
               }

@@ -6,9 +6,11 @@ export interface ChatRequest {
   message: string
   provider: string
   model: string
-  strategy: 'manual' | 'free_first' | 'best_available'
+  strategy: ChatStrategy
   web_search: boolean
 }
+
+export type ChatStrategy = 'manual' | 'free_first' | 'best_available'
 
 export interface SearchResult {
   title: string | null
