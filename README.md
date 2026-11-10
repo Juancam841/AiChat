@@ -45,6 +45,8 @@ Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles 
 
 La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`, archivos de base de datos ni artefactos de dependencias.
 
+En el selector, **Gratis primero** prioriza modelos gratuitos; **Mejor disponible** utiliza el orden de prioridad definido en `models.py`. La estrategia manual respeta el proveedor y el modelo seleccionados.
+
 Para limitar el tamaño del contexto, cada solicitud admite hasta 24.000 caracteres. Al continuar una conversación, se envían como máximo los 12 turnos completos más recientes dentro de ese límite; el historial completo permanece guardado en SQLite.
 
 Las cuotas locales se configuran por modelo en `quota_config.py`. Cada límite puede medirse por día, mes o acumulado total; los periodos diarios y mensuales usan UTC. Los valores `None` no imponen un tope, así que define valores de `requests` o `total_tokens` para activar una cuota.

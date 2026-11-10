@@ -84,6 +84,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - El contexto enviado al modelo se limita a un máximo de 12 turnos completos y 24.000 caracteres por solicitud; la base conserva el historial íntegro.
 - Las cuotas pueden medir consumo por día, mes o acumulado total en UTC; los topes numéricos se configuran por modelo en `quota_config.py` y permanecen sin límite mientras sean `None`.
 - `/providers` expone `available`, la intersección entre proveedores configurados y proveedores con modelos habilitados; la interfaz usa esa lista para el selector manual.
+- La interfaz ofrece las tres estrategias aceptadas por `/chat`; `best_available` sigue el orden de prioridad declarado en el catálogo de modelos.
 - `requirements.txt` declara dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 

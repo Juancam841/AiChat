@@ -97,6 +97,8 @@ def get_model_candidates(
             f"Estrategia desconocida: {strategy}"
         )
 
+    # best_available conserva el orden de prioridad definido en MODELS.
+
     return candidates
 
 
