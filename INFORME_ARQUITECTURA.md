@@ -1,8 +1,10 @@
-# Informe de diagnóstico de arquitectura de AIChat
+# Informe de arquitectura y auditoría funcional de AIChat
 
-**Alcance:** análisis estático del código fuente y las configuraciones visibles. No se modificaron otros archivos, no se leyeron .env, credenciales, bases de datos, entornos virtuales ni artefactos compilados, y no se ejecutaron pruebas. No se encontró un manifiesto de dependencias del backend entre los archivos fuente visibles.
+**Revisión:** 2026-11-10. **Base de código:** `main`, commit `1b2f444` (PR #1–#8 mergeados). Se revisaron backend, frontend, persistencia, selección, herramientas, búsqueda, cuotas y configuración. No se leyeron `.env`, credenciales ni bases de datos reales.
 
-## Arquitectura actual
+**Estado del checkout local:** la carpeta está en `main`. El sistema de archivos compartido marca los modos de muchos archivos como ejecutables; no se modificaron esos permisos. La única diferencia textual local frente a `origin/main` es `litellm==1.105.1` en `requirements.txt`; GitHub `main` fija `litellm==1.106.6`. Conviene decidir si esa diferencia es intencional antes de sincronizarla.
+
+## Arquitectura descrita en el diagnóstico inicial
 
 AIChat es una aplicación con frontend React/Vite y backend FastAPI. El backend concentra las rutas HTTP, la selección de modelos, las llamadas a proveedores mediante LiteLLM, la búsqueda web y la persistencia en SQLite. La configuración de proveedores y los catálogos de modelos están definidos en módulos Python.
 
@@ -13,29 +15,30 @@ La estructura fuente visible incluye:
 - Pruebas o scripts de prueba: test_providers.py y test_groq.py.
 - Copias antiguas: main_backup.py y models_backup.py.
 
-## Flujo de ejecución de una solicitud
+## Flujo de ejecución vigente
 
-1. El frontend carga los proveedores configurados y modelos mediante /providers y /models.
-2. Al enviar un mensaje, manda conversation_id, message, provider, model y strategy a /chat.
-3. FastAPI elige el modelo manualmente o llama a select_model. En estrategia automática, el router filtra el catálogo por proveedor configurado, capacidad, estado y cuota local.
-4. El backend recupera el historial de SQLite y añade el nuevo mensaje.
-5. Según la estrategia y si se solicitó búsqueda web, llama a LiteLLM directamente o recorre candidatos de fallback. La búsqueda puede usar la búsqueda nativa de un modelo compatible o Tavily.
-6. Tras obtener respuesta, guarda usuario y asistente en SQLite, actualiza título y modelo de la conversación y devuelve la respuesta al frontend.
+1. Al iniciar, FastAPI inicializa SQLite y migra las columnas de métricas de búsqueda. La importación del backend registra la calculadora y la búsqueda de Tavily.
+2. La interfaz carga conversaciones y el catálogo. `/providers` devuelve proveedores configurados, proveedores con modelos habilitados y `available`, la intersección que utiliza el selector manual. `/models` entrega los modelos habilitados del proveedor solicitado.
+3. El usuario envía mensaje, conversación, estrategia (`manual`, `free_first` o `best_available`), proveedor/modelo y `web_search`. La API limita el mensaje a 24.000 caracteres.
+4. En una conversación existente, la API recupera mensajes y reduce el contexto enviado a un máximo de 12 turnos completos y 24.000 caracteres contando el mensaje nuevo. El historial completo permanece en SQLite.
+5. En modo manual se respeta el modelo elegido. Si se activa búsqueda web, se intenta búsqueda nativa cuando el modelo la declara y luego Tavily; de lo contrario, un modelo compatible puede usar la calculadora. En modo automático, el router filtra modelos configurados, habilitados y dentro de cuota; `free_first` prioriza los gratuitos y `best_available` conserva el orden del catálogo. El fallback intenta candidatos posteriores si uno falla.
+6. Tras una respuesta correcta se crea una conversación nueva, si corresponde, y se guardan mensaje del usuario, respuesta, título y modelo utilizado. El backend responde con texto, modelo, proveedor y fuentes de búsqueda.
+7. La interfaz muestra Markdown, fuentes y errores. Al abrir una conversación anterior recupera mensajes, pero no las fuentes asociadas a las respuestas porque estas no se persisten.
+8. Cada llamada a proveedor registra tokens, resultado y métricas de búsqueda. `/usage` muestra agregados históricos; `/quotas` muestra el consumo del periodo configurado.
 
-Las rutas están en main.py; el frontend arma la petición en frontend/src/App.tsx y la envía desde frontend/src/services/api.ts.
+## Componentes y responsabilidades vigentes
 
-## Componentes y responsabilidades
-
-- **API y coordinación:** main.py define las rutas de chat, modelos, proveedores, consumo, cuotas y conversaciones. También inicializa la base al arrancar.
-- **Proveedores y fallback:** providers.py valida modelo y API key, llama a LiteLLM y registra tokens. Incluye fallback entre modelos y búsqueda web.
-- **Catálogo y selección:** models.py define capacidades, costos declarados y compatibilidad con herramientas. model_router.py filtra candidatos y ordena los gratuitos primero.
+- **API y coordinación:** `main.py` define chat, catálogo, uso, cuotas y CRUD de conversaciones; además decide qué flujo de proveedor invocar.
+- **Proveedores y fallback:** `providers.py` valida modelos y claves, llama a LiteLLM, registra uso, ejecuta herramientas y gestiona búsqueda nativa/Tavily.
+- **Catálogo y selección:** `models.py` mantiene manualmente capacidades, costos, soporte de herramientas y orden de prioridad. `model_router.py` filtra por proveedor, capacidad y cuota.
 - **Configuración:** config.py lee claves desde variables de entorno mediante python-dotenv. No se inspeccionaron sus valores.
-- **Cuotas y utilización:** quota_manager.py compara límites estáticos con los agregados de usage_manager.py, que registra solicitudes y tokens en SQLite.
+- **Cuotas y utilización:** `quota_manager.py` calcula consumo por día, mes o total; `usage_manager.py` registra cada llamada a proveedor en SQLite.
 - **Persistencia:** database.py gestiona conversaciones, mensajes, índices y una migración para columnas de métricas de búsqueda.
 - **Herramientas:** tool_manager.py registra herramientas y valida argumentos con JSON Schema. tools_web_search.py implementa Tavily; tools_calculator.py evalúa expresiones mediante un subconjunto de AST.
-- **Frontend:** frontend/src/App.tsx administra catálogo, selector de estrategia, chat e historial. frontend/src/services/api.ts centraliza las llamadas HTTP.
+- **Contexto:** `conversation_context.py` limita turnos completos y caracteres enviados al modelo.
+- **Frontend:** `frontend/src/App.tsx` administra catálogo, estrategia, chat, búsqueda e historial; `frontend/src/services/api.ts` centraliza las llamadas HTTP.
 
-## Problemas técnicos detectados
+## Hallazgos del diagnóstico original (referencia histórica)
 
 1. **La interfaz no expone la búsqueda web.** El backend admite web_search, pero el frontend no lo incluye en la petición ni ofrece control para activarlo. La búsqueda web no está disponible desde la interfaz actual.
 2. **El ciclo general de herramientas parece desconectado.** ask_model_with_tools implementa llamadas iterativas a herramientas, pero las rutas de chat invocan ask_model o funciones de fallback. No se encontró una ruta que llame a ask_model_with_tools; por tanto, la calculadora y el uso general de herramientas por el modelo no parecen alcanzables en el flujo normal. La búsqueda de Tavily sí se invoca directamente en las rutas especializadas.
@@ -48,7 +51,7 @@ Las rutas están en main.py; el frontend arma la petición en frontend/src/App.t
 9. **No se ve configuración reproducible de dependencias del backend.** Las dependencias frontend figuran en frontend/package.json; no se encontró un requirements.txt o equivalente entre los archivos fuente visibles.
 10. **Los contratos del frontend y backend no están completamente alineados.** El tipo TypeScript de estrategia admite manual, free_first y best_available, pero la interfaz solo ofrece las dos primeras. Asimismo, el tipo de respuesta del chat no contempla results, aunque el backend los devuelve.
 
-## Riesgos de mantenimiento
+## Riesgos de mantenimiento identificados inicialmente
 
 - **Acoplamiento:** main.py coordina demasiadas responsabilidades; providers.py combina validación, transporte, fallback, búsqueda y contabilidad.
 - **Catálogo mantenido a mano:** modelos, capacidades y límites están en estructuras separadas, con posibilidad de inconsistencias.
@@ -57,7 +60,7 @@ Las rutas están en main.py; el frontend arma la petición en frontend/src/App.t
 - **Validación difícil:** los scripts de prueba requieren acceso a proveedores externos y credenciales; no se aprecia una suite de pruebas automatizada aislada.
 - **Código de respaldo:** main_backup.py y models_backup.py duplican código y pueden confundir sobre cuál es la implementación activa.
 
-## Recomendaciones priorizadas
+## Recomendaciones originales
 
 1. **P0 — Alinear capacidades visibles con las funcionales.** Decidir si la búsqueda y las herramientas deben estar en la interfaz y conectar el flujo correspondiente; si no, evitar presentarlas como capacidades activas.
 2. **P0 — Definir límites de exposición.** Si el backend puede ser accesible desde una red, establecer autenticación y controles de acceso antes de publicar el servicio.
@@ -69,11 +72,11 @@ Las rutas están en main.py; el frontend arma la petición en frontend/src/App.t
 8. **P2 — Añadir pruebas aisladas y dependencias reproducibles.** Separar pruebas unitarias de llamadas reales y declarar dependencias del backend.
 9. **P3 — Simplificar estructura.** Retirar o archivar copias de respaldo una vez confirmada la versión vigente, y separar coordinación HTTP de lógica de proveedores.
 
-## Verificación
+## Verificación del diagnóstico original
 
 No se modificó ni ejecutó código. El informe se basa en inspección estática de los archivos fuente permitidos; no incluye validación dinámica de dependencias, endpoints o servicios externos.
 
-## Seguimiento posterior al diagnóstico
+## Cambios incorporados en `main` hasta PR #8
 
 La versión inicial y su evolución incorporan estos cambios respecto al estado descrito arriba:
 
@@ -84,7 +87,46 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - El contexto enviado al modelo se limita a un máximo de 12 turnos completos y 24.000 caracteres por solicitud; la base conserva el historial íntegro.
 - Las cuotas pueden medir consumo por día, mes o acumulado total en UTC; los topes numéricos se configuran por modelo en `quota_config.py` y permanecen sin límite mientras sean `None`.
 - `/providers` expone `available`, la intersección entre proveedores configurados y proveedores con modelos habilitados; la interfaz usa esa lista para el selector manual.
+- La interfaz ofrece `manual`, `free_first` y `best_available`; esta última utiliza el orden declarado en `models.py`.
 - `requirements.txt` declara y fija las dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 
-Estos cambios no resuelven las otras recomendaciones del diagnóstico. No se ejecutaron pruebas ni una compilación para esta actualización.
+## Auditoría funcional de la versión actual
+
+### Cobertura revisada
+
+- **Chat y persistencia:** se verificaron respuestas simuladas en modo manual, búsqueda manual con fuentes, selección automática `best_available`, guardado de mensajes y ausencia de conversaciones/mensajes nuevos cuando falla el proveedor.
+- **Herramientas:** se verificó la llamada de `/chat` al flujo de herramientas para un modelo compatible y se probó la calculadora. No se simuló el protocolo de tool-calling de cada proveedor.
+- **Contexto y cuotas:** se revisó el recorte a turnos completos y se ejercitaron los periodos UTC diarios, mensuales y acumulados. Los límites numéricos siguen en `None`.
+- **Frontend:** `npm ci`, `npm run build` y `npm run lint` terminaron correctamente en un checkout temporal de `main`.
+- **Backend:** se instalaron las dependencias fijadas de `main` en un entorno temporal y pasaron pruebas de humo con `TestClient` y proveedores simulados.
+
+No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque dependen de claves externas, que no se leyeron. La verificación se hizo en Linux con Python 3.12 y Node 24, no en el entorno macOS del usuario. La API local sí respondió correctamente en las pruebas simuladas; eso no demuestra la disponibilidad de cada proveedor ni de sus modelos actuales.
+
+### Problemas técnicos vigentes
+
+1. **P0 condicional — API sin autenticación.** Todas las rutas son accesibles a cualquier cliente que alcance el backend. CORS limita navegadores, no clientes directos. Uvicorn usa loopback por defecto; no se debe enlazar a una interfaz de red ni publicar el servicio sin añadir autenticación.
+2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
+3. **P1 — Las cuotas no reservan consumo concurrente.** La selección consulta consumo antes de llamar al proveedor y el registro se escribe después. Solicitudes simultáneas pueden pasar juntas y exceder un límite configurado.
+4. **P1 — Persistencia de mensajes no transaccional.** La conversación nueva se retrasa hasta recibir respuesta, pero guardar usuario, título y asistente usa varias transacciones. Un error de SQLite entre escrituras todavía puede dejar un registro parcial.
+5. **P2 — Las fuentes de búsqueda no sobreviven al historial.** `results` se devuelven y se muestran en la respuesta actual, pero SQLite guarda solo el texto. Al reabrir una conversación, las fuentes desaparecen.
+6. **P2 — El mensaje optimista permanece tras un error.** La interfaz añade el mensaje del usuario antes de llamar a `/chat`; si el proveedor falla, muestra el error, pero no elimina ni marca ese mensaje como fallido. El backend sí evita persistirlo.
+7. **P2 — El presupuesto del historial cuenta caracteres, no tokens.** El recorte controla tamaño y conserva turnos completos, pero el número de tokens varía por modelo e idioma; el límite no garantiza ajustarse al contexto real del proveedor.
+8. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
+9. **P2 — Sin paginación ni retención.** El historial y los mensajes se devuelven completos. A medida que SQLite crezca, cargar conversaciones y utilizaciones completas aumentará el trabajo de la API y del navegador.
+10. **P2 — URL de API fija.** El frontend apunta a `http://127.0.0.1:8000`; para desplegar frontend y backend en distintos hosts habrá que parametrizarla.
+11. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
+12. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
+
+### Estado de las recomendaciones
+
+- **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; creación de conversaciones después de una respuesta correcta; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; dependencias directas declaradas y fijadas; cuotas con periodos configurables.
+- **Parciales:** cuotas sin valores numéricos ni reservas concurrentes; dependencias directas fijadas pero transitivas abiertas; contexto limitado por caracteres, no por tokens; las fuentes se muestran pero no se guardan.
+- **Pendientes:** autenticación para cualquier despliegue fuera de loopback; transacciones para guardar cada turno; paginación/retención; pruebas backend aisladas y refactor de coordinación.
+
+## Verificación de esta revisión
+
+- Frontend temporal: `npm ci`, `npm run build` y `npm run lint` — correctos.
+- Backend temporal: instalación desde `requirements.txt` de `main` y pruebas de humo con proveedores simulados — correctas.
+- `git diff --check` del informe — correcto.
+- No se hicieron llamadas externas a modelos ni a Tavily, ni se inspeccionaron claves o bases de datos del usuario.
