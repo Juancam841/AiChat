@@ -107,22 +107,17 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 
 1. **P0 condicional — API sin autenticación.** Todas las rutas son accesibles a cualquier cliente que alcance el backend. CORS limita navegadores, no clientes directos. Uvicorn usa loopback por defecto; no se debe enlazar a una interfaz de red ni publicar el servicio sin añadir autenticación.
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
-3. **P1 — Las cuotas no reservan consumo concurrente.** La selección consulta consumo antes de llamar al proveedor y el registro se escribe después. Solicitudes simultáneas pueden pasar juntas y exceder un límite configurado.
-4. **P1 — Persistencia de mensajes no transaccional.** La conversación nueva se retrasa hasta recibir respuesta, pero guardar usuario, título y asistente usa varias transacciones. Un error de SQLite entre escrituras todavía puede dejar un registro parcial.
-5. **P2 — Las fuentes de búsqueda no sobreviven al historial.** `results` se devuelven y se muestran en la respuesta actual, pero SQLite guarda solo el texto. Al reabrir una conversación, las fuentes desaparecen.
-6. **P2 — El mensaje optimista permanece tras un error.** La interfaz añade el mensaje del usuario antes de llamar a `/chat`; si el proveedor falla, muestra el error, pero no elimina ni marca ese mensaje como fallido. El backend sí evita persistirlo.
-7. **P2 — El presupuesto del historial cuenta caracteres, no tokens.** El recorte controla tamaño y conserva turnos completos, pero el número de tokens varía por modelo e idioma; el límite no garantiza ajustarse al contexto real del proveedor.
-8. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
-9. **P2 — Sin paginación ni retención.** El historial y los mensajes se devuelven completos. A medida que SQLite crezca, cargar conversaciones y utilizaciones completas aumentará el trabajo de la API y del navegador.
-10. **P2 — URL de API fija.** El frontend apunta a `http://127.0.0.1:8000`; para desplegar frontend y backend en distintos hosts habrá que parametrizarla.
-11. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
-12. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
+3. **P2 — El presupuesto del historial cuenta caracteres, no tokens.** El recorte controla tamaño y conserva turnos completos, pero el número de tokens varía por modelo e idioma; el límite no garantiza ajustarse al contexto real del proveedor.
+4. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
+5. **P2 — Paginación y retención parciales.** El listado de conversaciones usa páginas de 25 elementos, con máximo de 100 por consulta. El detalle de una conversación y las estadísticas de uso todavía se devuelven completos, y no hay política de retención.
+6. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
+7. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
 
 ### Estado de las recomendaciones
 
-- **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; creación de conversaciones después de una respuesta correcta; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; dependencias directas declaradas y fijadas; cuotas con periodos configurables.
-- **Parciales:** cuotas sin valores numéricos ni reservas concurrentes; dependencias directas fijadas pero transitivas abiertas; contexto limitado por caracteres, no por tokens; las fuentes se muestran pero no se guardan.
-- **Pendientes:** autenticación para cualquier despliegue fuera de loopback; transacciones para guardar cada turno; paginación/retención; pruebas backend aisladas y refactor de coordinación.
+- **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; contexto limitado por caracteres, no por tokens; paginación/retención incompletas para mensajes y estadísticas de uso.
+- **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; pruebas backend aisladas; refactor de coordinación.
 
 ## Verificación de esta revisión
 

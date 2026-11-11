@@ -115,36 +115,6 @@ def initialize_database():
         connection.close()
 
 
-def create_conversation(provider, model, title="Nueva conversación"):
-
-    conversation_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-
-    connection = get_connection()
-
-    try:
-        connection.execute("""
-            INSERT INTO conversations (
-                id, title, provider, model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            conversation_id,
-            title,
-            provider,
-            model,
-            now,
-            now
-        ))
-
-        connection.commit()
-
-        return conversation_id
-
-    finally:
-        connection.close()
-
-
 def save_message(conversation_id, role, content, results=None):
 
     now = datetime.now(timezone.utc).isoformat()
@@ -213,11 +183,42 @@ def get_conversation_messages(conversation_id):
         connection.close()
 
 
-def save_turn(conversation_id, user_content, assistant_content, results=None):
-    """Persist both messages and their search sources in one transaction."""
+def save_turn(
+    conversation_id,
+    user_content,
+    assistant_content,
+    results=None,
+    provider=None,
+    model=None,
+    title=None
+):
+    """Atomically persist a conversation (if new), its turn, and sources."""
     now = datetime.now(timezone.utc).isoformat()
+    is_new_conversation = conversation_id is None
+    if is_new_conversation:
+        if provider is None or model is None:
+            raise ValueError(
+                "Se requieren proveedor y modelo para crear la conversación."
+            )
+        conversation_id = str(uuid.uuid4())
+
     connection = get_connection()
     try:
+        connection.execute("BEGIN IMMEDIATE")
+        if is_new_conversation:
+            connection.execute("""
+                INSERT INTO conversations (
+                    id, title, provider, model, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                conversation_id,
+                title or "Nueva conversación",
+                provider,
+                model,
+                now,
+                now
+            ))
+
         connection.execute("""
             INSERT INTO messages (conversation_id, role, content, created_at)
             VALUES (?, 'user', ?, ?)
@@ -237,9 +238,15 @@ def save_turn(conversation_id, user_content, assistant_content, results=None):
                 for item in results
             ])
         connection.execute("""
-            UPDATE conversations SET updated_at = ? WHERE id = ?
-        """, (now, conversation_id))
+            UPDATE conversations
+            SET updated_at = ?,
+                provider = COALESCE(?, provider),
+                model = COALESCE(?, model),
+                title = COALESCE(?, title)
+            WHERE id = ?
+        """, (now, provider, model, title, conversation_id))
         connection.commit()
+        return conversation_id
     except Exception:
         connection.rollback()
         raise
