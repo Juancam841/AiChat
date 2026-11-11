@@ -51,7 +51,7 @@ La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`
 
 En el selector, **Gratis primero** prioriza modelos gratuitos; **Mejor disponible** utiliza el orden de prioridad definido en `models.py`. La estrategia manual respeta el proveedor y el modelo seleccionados.
 
-Cada mensaje admite hasta 24.000 caracteres. Al continuar una conversación, el backend cuenta tokens con LiteLLM y envía como máximo los 12 turnos completos más recientes dentro de un presupuesto de 8.192 tokens; el cálculo incluye el mensaje nuevo y el prompt del sistema, y reserva 2.048 tokens para instrucciones y herramientas adicionales. También conserva el tope de caracteres. Si LiteLLM no puede identificar un tokenizador para el modelo, usa una estimación conservadora basada en el tamaño UTF-8. El historial completo permanece guardado en SQLite.
+Cada mensaje admite hasta 24.000 caracteres. Al continuar una conversación, el backend cuenta el mensaje nuevo, el prompt del sistema, los esquemas de herramientas y hasta 12 turnos completos dentro de un presupuesto de entrada de 8.192 tokens. Reserva 2.048 tokens para datos añadidos durante la búsqueda y las llamadas a herramientas: hasta 1.024 para cada categoría. Cada respuesta del modelo se limita a 2.048 tokens. Si LiteLLM no identifica un tokenizador, el conteo usa una estimación basada en el tamaño UTF-8. El historial completo permanece guardado en SQLite.
 
 Las cuotas locales se configuran por modelo en `quota_config.py`. Cada límite puede medirse por día, mes o acumulado total; los periodos diarios y mensuales usan UTC. Los valores `None` no imponen un tope, así que define valores de `requests` o `total_tokens` para activar una cuota.
 
