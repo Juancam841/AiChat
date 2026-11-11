@@ -27,17 +27,29 @@ function App() {
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [error, setError] = useState('')
   const [webSearch, setWebSearch] = useState(false)
 
   // Referencia al contenedor de mensajes para controlar el autoscroll
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
+  const previousScrollRef = useRef<{ height: number; top: number } | null>(null)
 
   // Desplazar automáticamente hasta el último mensaje
   useEffect(() => {
     const container = chatMessagesRef.current
 
     if (container) {
+      const previousScroll = previousScrollRef.current
+      if (previousScroll) {
+        container.scrollTop = (
+          previousScroll.top + container.scrollHeight - previousScroll.height
+        )
+        previousScrollRef.current = null
+        return
+      }
+
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth'
@@ -218,7 +230,7 @@ function App() {
 
   // Abrir una conversación anterior
   async function openConversation(id: string) {
-    if (loading) return
+    if (loading || loadingOlderMessages) return
 
     setError('')
 
@@ -227,6 +239,7 @@ function App() {
 
       setConversationId(result.conversation.id)
       setMessages(result.messages)
+      setHasMoreMessages(result.has_more)
 
       // Recuperar proveedor y modelo de la conversación
       const savedProvider = result.conversation.provider
@@ -249,10 +262,41 @@ function App() {
     }
   }
 
+  async function loadOlderMessages() {
+    const firstMessageId = messages[0]?.id
+    if (!conversationId || firstMessageId === undefined || loadingOlderMessages) {
+      return
+    }
+
+    setLoadingOlderMessages(true)
+    try {
+      const result = await getConversation(conversationId, 50, firstMessageId)
+      const container = chatMessagesRef.current
+      if (container) {
+        previousScrollRef.current = {
+          height: container.scrollHeight,
+          top: container.scrollTop
+        }
+      }
+      setMessages(previous => [...result.messages, ...previous])
+      setHasMoreMessages(result.has_more)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'No fue posible cargar mensajes anteriores.'
+      )
+    } finally {
+      setLoadingOlderMessages(false)
+    }
+  }
+
   // Crear conversación nueva
   function newConversation() {
+    if (loadingOlderMessages) return
     setMessages([])
     setConversationId(null)
+    setHasMoreMessages(false)
     setInput('')
     setError('')
   }
@@ -270,6 +314,7 @@ function App() {
         <button
           className="new-chat-button"
           onClick={newConversation}
+          disabled={loadingOlderMessages}
         >
           + Nueva conversación
         </button>
@@ -297,7 +342,7 @@ function App() {
                       : ''
                   }`}
                   onClick={() => openConversation(conversation.id)}
-                  disabled={loading}
+                  disabled={loading || loadingOlderMessages}
                   title={conversation.title}
                 >
                   <span className="history-item-title">
@@ -416,9 +461,19 @@ function App() {
 
             <div className="chat-messages" ref={chatMessagesRef}>
 
+              {hasMoreMessages && (
+                <button
+                  className="load-older-messages"
+                  onClick={() => void loadOlderMessages()}
+                  disabled={loadingOlderMessages}
+                >
+                  {loadingOlderMessages ? 'Cargando…' : 'Cargar mensajes anteriores'}
+                </button>
+              )}
+
               {messages.map((message, index) => (
                 <div
-                  key={index}
+                  key={message.id ?? `pending-${message.role}-${index}`}
                   className={`message ${message.role}`}
                 >
                   <strong>

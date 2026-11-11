@@ -35,6 +35,7 @@ from database import (
     initialize_database,
     save_turn,
     get_conversation_messages,
+    get_conversation_message_page,
     get_conversation,
     get_all_conversations,
     delete_conversation
@@ -203,7 +204,11 @@ def list_conversations(
 
 
 @app.get("/conversations/{conversation_id}")
-def get_conversation_detail(conversation_id: str):
+def get_conversation_detail(
+    conversation_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    before_id: int | None = Query(default=None, gt=0)
+):
     try:
         conversation = get_conversation(conversation_id)
 
@@ -213,11 +218,16 @@ def get_conversation_detail(conversation_id: str):
                 detail="La conversación no existe."
             )
 
-        messages = get_conversation_messages(conversation_id)
+        messages, has_more = get_conversation_message_page(
+            conversation_id,
+            limit=limit,
+            before_id=before_id
+        )
 
         return {
             "conversation": conversation,
-            "messages": messages
+            "messages": messages,
+            "has_more": has_more
         }
 
     except HTTPException:

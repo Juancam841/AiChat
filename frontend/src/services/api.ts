@@ -46,6 +46,7 @@ export interface ModelsResponse {
 }
 
 export interface Message {
+  id?: number
   role: 'user' | 'assistant'
   content: string
   results?: SearchResult[]
@@ -68,6 +69,7 @@ export interface ConversationsResponse {
 export interface ConversationDetailResponse {
   conversation: Conversation
   messages: Message[]
+  has_more: boolean
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
@@ -127,10 +129,14 @@ export async function getConversations(
 }
 
 export async function getConversation(
-  conversationId: string
+  conversationId: string,
+  limit = 50,
+  beforeId?: number
 ): Promise<ConversationDetailResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (beforeId !== undefined) params.set('before_id', String(beforeId))
   const response = await fetch(
-    `${API_URL}/conversations/${encodeURIComponent(conversationId)}`
+    `${API_URL}/conversations/${encodeURIComponent(conversationId)}?${params}`
   )
 
   const data = await response.json()
