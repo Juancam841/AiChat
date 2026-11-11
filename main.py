@@ -10,7 +10,7 @@ from conversation_context import (
 )
 
 from usage_manager import get_usage_summary
-from config import get_configured_providers
+from config import CORS_ORIGINS, get_configured_providers
 
 from providers import (
     ask_model,
@@ -54,10 +54,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

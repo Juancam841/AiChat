@@ -41,6 +41,8 @@ npm run dev
 
 Abre la dirección que Vite muestra en la terminal. La API escucha en `http://127.0.0.1:8000`.
 
+Si el frontend y la API están en hosts distintos, define `VITE_API_URL` en `frontend/.env.local` con la URL base de la API, por ejemplo `VITE_API_URL=https://api.ejemplo.com`. En el entorno del backend, configura `AI_CHAT_CORS_ORIGINS` con el origen completo del frontend, por ejemplo `https://chat.ejemplo.com`. Si no defines estas variables, se usan las direcciones locales de desarrollo.
+
 ## Proveedores
 
 Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles se definen en `models.py`. La búsqueda web requiere Tavily y se activa desde la casilla **Buscar en la web** del chat. En modelos compatibles, la calculadora se invoca automáticamente cuando el modelo la necesita.

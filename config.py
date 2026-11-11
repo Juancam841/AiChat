@@ -15,6 +15,16 @@ PROVIDERS = {
 # API Keys de herramientas externas
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
+# Orígenes del frontend permitidos por CORS; separados por comas.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "AI_CHAT_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if origin.strip()
+]
+
 
 def get_configured_providers():
     return [
