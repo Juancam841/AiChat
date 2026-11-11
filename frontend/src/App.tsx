@@ -183,11 +183,21 @@ function App() {
         { role: 'assistant', content: result.response, results: result.results }
       ])
 
-      // Actualizar historial después de cada respuesta
-      const updatedHistory = await getConversations()
-      setConversations(updatedHistory)
+      // Un fallo al refrescar el historial no invalida el mensaje ya guardado.
+      try {
+        const updatedHistory = await getConversations()
+        setConversations(updatedHistory)
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'No fue posible actualizar el historial.'
+        )
+      }
 
     } catch (err) {
+      // El mensaje optimista no se guardó en el servidor; retirarlo de la vista.
+      setMessages(previous => previous.slice(0, -1))
       const errorMessage = err instanceof Error
         ? err.message
         : 'No fue posible comunicarse con el servidor.'

@@ -46,6 +46,16 @@ def initialize_database():
                     ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS message_search_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                title TEXT,
+                url TEXT,
+                content TEXT,
+                published_date TEXT,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id);
 
@@ -123,14 +133,14 @@ def create_conversation(provider, model, title="Nueva conversación"):
         connection.close()
 
 
-def save_message(conversation_id, role, content):
+def save_message(conversation_id, role, content, results=None):
 
     now = datetime.now(timezone.utc).isoformat()
 
     connection = get_connection()
 
     try:
-        connection.execute("""
+        cursor = connection.execute("""
             INSERT INTO messages (
                 conversation_id, role, content, created_at
             )
@@ -141,6 +151,17 @@ def save_message(conversation_id, role, content):
             content,
             now
         ))
+
+        if results:
+            connection.executemany("""
+                INSERT INTO message_search_results (
+                    message_id, title, url, content, published_date
+                ) VALUES (?, ?, ?, ?, ?)
+            """, [
+                (cursor.lastrowid, item.get("title"), item.get("url"),
+                 item.get("content"), item.get("published_date"))
+                for item in results
+            ])
 
         connection.execute("""
             UPDATE conversations
@@ -160,17 +181,56 @@ def get_conversation_messages(conversation_id):
 
     try:
         rows = connection.execute("""
-            SELECT role, content
+            SELECT id, role, content
             FROM messages
             WHERE conversation_id = ?
             ORDER BY id ASC
         """, (conversation_id,)).fetchall()
 
-        return [dict(row) for row in rows]
+        messages = [dict(row) for row in rows]
+        for message in messages:
+            results = connection.execute("""
+                SELECT title, url, content, published_date
+                FROM message_search_results
+                WHERE message_id = ? ORDER BY id ASC
+            """, (message.pop("id"),)).fetchall()
+            if results:
+                message["results"] = [dict(row) for row in results]
+        return messages
 
+
+def save_turn(conversation_id, user_content, assistant_content, results=None):
+    """Persist both messages and their search sources in one transaction."""
+    now = datetime.now(timezone.utc).isoformat()
+    connection = get_connection()
+    try:
+        connection.execute("""
+            INSERT INTO messages (conversation_id, role, content, created_at)
+            VALUES (?, 'user', ?, ?)
+        """, (conversation_id, user_content, now))
+        assistant_cursor = connection.execute("""
+            INSERT INTO messages (conversation_id, role, content, created_at)
+            VALUES (?, 'assistant', ?, ?)
+        """, (conversation_id, assistant_content, now))
+        if results:
+            connection.executemany("""
+                INSERT INTO message_search_results
+                    (message_id, title, url, content, published_date)
+                VALUES (?, ?, ?, ?, ?)
+            """, [
+                (assistant_cursor.lastrowid, item.get("title"), item.get("url"),
+                 item.get("content"), item.get("published_date"))
+                for item in results
+            ])
+        connection.execute("""
+            UPDATE conversations SET updated_at = ? WHERE id = ?
+        """, (now, conversation_id))
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
-
 
 def get_conversation(conversation_id):
 
