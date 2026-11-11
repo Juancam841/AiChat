@@ -197,6 +197,8 @@ def get_conversation_messages(conversation_id):
             if results:
                 message["results"] = [dict(row) for row in results]
         return messages
+    finally:
+        connection.close()
 
 
 def save_turn(conversation_id, user_content, assistant_content, results=None):
