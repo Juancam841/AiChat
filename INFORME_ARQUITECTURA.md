@@ -109,14 +109,14 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
 3. **P2 — El presupuesto del historial solo estima parte de la solicitud.** LiteLLM cuenta tokens para los mensajes y el prompt del sistema; si no encuentra un tokenizador, se usa una estimación por bytes UTF-8. Las instrucciones de búsqueda, los esquemas de herramientas y la salida del modelo pueden exceder la reserva de 2.048 tokens.
 4. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
-5. **P2 — Paginación y retención parciales.** El listado de conversaciones usa páginas de 25 elementos, con máximo de 100 por consulta. El detalle de una conversación y las estadísticas de uso todavía se devuelven completos, y no hay política de retención.
+5. **P2 — Paginación y retención parciales.** El listado usa páginas de 25 conversaciones, y el detalle muestra 50 mensajes por página, ambos con máximo de 100. Las estadísticas de uso todavía se devuelven completas y no hay política de retención.
 6. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
 7. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
 
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; presupuesto de tokens estimado y con reserva limitada para instrucciones adicionales; paginación/retención incompletas para mensajes y estadísticas de uso.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; presupuesto de tokens estimado y con reserva limitada para instrucciones adicionales; paginación/retención de estadísticas de uso pendientes.
 - **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; pruebas backend aisladas; refactor de coordinación.
 
 ## Verificación de esta revisión

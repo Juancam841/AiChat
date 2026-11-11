@@ -59,6 +59,9 @@ def initialize_database():
             CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id);
 
+            CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
+            ON messages(conversation_id, id);
+
             CREATE TABLE IF NOT EXISTS usage_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 provider TEXT NOT NULL,
@@ -179,6 +182,42 @@ def get_conversation_messages(conversation_id):
             if results:
                 message["results"] = [dict(row) for row in results]
         return messages
+    finally:
+        connection.close()
+
+
+def get_conversation_message_page(conversation_id, limit=50, before_id=None):
+    connection = get_connection()
+
+    try:
+        query = """
+            SELECT id, role, content
+            FROM messages
+            WHERE conversation_id = ?
+        """
+        parameters = [conversation_id]
+        if before_id is not None:
+            query += " AND id < ?"
+            parameters.append(before_id)
+        query += " ORDER BY id DESC LIMIT ?"
+        parameters.append(limit + 1)
+        rows = connection.execute(query, parameters).fetchall()
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        messages = []
+        for row in reversed(rows):
+            message = dict(row)
+            results = connection.execute("""
+                SELECT title, url, content, published_date
+                FROM message_search_results
+                WHERE message_id = ? ORDER BY id ASC
+            """, (message["id"],)).fetchall()
+            if results:
+                message["results"] = [dict(result) for result in results]
+            messages.append(message)
+
+        return messages, has_more
     finally:
         connection.close()
 

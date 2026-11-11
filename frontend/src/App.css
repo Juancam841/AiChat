@@ -558,6 +558,22 @@ textarea {
   gap: 18px;
 }
 
+.load-older-messages {
+  align-self: center;
+  border: 1px solid #343943;
+  border-radius: 7px;
+  background: #171a20;
+  color: #d1d5db;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.load-older-messages:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* Estilo general de cada mensaje */
 .message {
   width: fit-content;
