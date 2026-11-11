@@ -32,7 +32,7 @@ from tool_manager import get_available_tools
 from database import (
     initialize_database,
     create_conversation,
-    save_message,
+    save_turn,
     get_conversation_messages,
     get_conversation,
     get_all_conversations,
@@ -404,14 +404,6 @@ def chat(request: ChatRequest):
                 model=model
             )
 
-        # 7. Guardar mensaje del usuario
-
-        save_message(
-            conversation_id,
-            "user",
-            request.message
-        )
-
         # 8. Asignar título automático
 
         if request.conversation_id is None:
@@ -428,12 +420,12 @@ def chat(request: ChatRequest):
                 title
             )
 
-        # 9. Guardar respuesta del asistente
-
-        save_message(
+        # Persistir el turno completo y sus fuentes de forma atómica.
+        save_turn(
             conversation_id,
-            "assistant",
-            response
+            request.message,
+            response,
+            search_results
         )
 
         # 10. Actualizar proveedor y modelo utilizados
