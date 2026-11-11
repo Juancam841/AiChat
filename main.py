@@ -1,7 +1,7 @@
 import logging
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from conversation_context import (
@@ -181,12 +181,17 @@ def quotas():
 
 
 @app.get("/conversations")
-def list_conversations():
+def list_conversations(
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0)
+):
     try:
-        conversations = get_all_conversations()
+        total, conversations = get_all_conversations(limit, offset)
 
         return {
-            "total": len(conversations),
+            "total": total,
+            "limit": limit,
+            "offset": offset,
             "conversations": conversations
         }
 

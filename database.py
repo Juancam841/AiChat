@@ -251,7 +251,7 @@ def get_conversation(conversation_id):
         connection.close()
 
 
-def get_all_conversations():
+def get_all_conversations(limit=25, offset=0):
 
     connection = get_connection()
 
@@ -260,9 +260,13 @@ def get_all_conversations():
             SELECT *
             FROM conversations
             ORDER BY updated_at DESC
-        """).fetchall()
+            LIMIT ? OFFSET ?
+        """, (limit, offset)).fetchall()
+        total = connection.execute(
+            "SELECT COUNT(*) FROM conversations"
+        ).fetchone()[0]
 
-        return [dict(row) for row in rows]
+        return total, [dict(row) for row in rows]
 
     finally:
         connection.close()

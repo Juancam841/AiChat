@@ -53,7 +53,10 @@ function App() {
   const [catalogLoading, setCatalogLoading] = useState(true)
 
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversationTotal, setConversationTotal] = useState(0)
+  const [historyOffset, setHistoryOffset] = useState(0)
   const [historyLoading, setHistoryLoading] = useState(true)
+  const historyPageSize = 25
 
   // Cargar proveedores y modelos
   useEffect(() => {
@@ -90,10 +93,13 @@ function App() {
   }, [])
 
   // Cargar historial de conversaciones
-  async function loadHistory() {
+  async function loadHistory(offset = 0) {
+    setHistoryLoading(true)
     try {
-      const data = await getConversations()
-      setConversations(data)
+      const data = await getConversations(historyPageSize, offset)
+      setConversations(data.conversations)
+      setConversationTotal(data.total)
+      setHistoryOffset(offset)
     } catch (err) {
       setError(
         err instanceof Error
@@ -106,7 +112,7 @@ function App() {
   }
 
   useEffect(() => {
-    void loadHistory()
+    void loadHistory(0)
   }, [])
 
   // Cambiar proveedor
@@ -185,8 +191,10 @@ function App() {
 
       // Un fallo al refrescar el historial no invalida el mensaje ya guardado.
       try {
-        const updatedHistory = await getConversations()
-        setConversations(updatedHistory)
+        const updatedHistory = await getConversations(historyPageSize, 0)
+        setConversations(updatedHistory.conversations)
+        setConversationTotal(updatedHistory.total)
+        setHistoryOffset(0)
       } catch (err) {
         setError(
           err instanceof Error
@@ -297,6 +305,28 @@ function App() {
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {conversationTotal > historyPageSize && (
+            <div className="history-pagination">
+              <button
+                onClick={() => void loadHistory(Math.max(0, historyOffset - historyPageSize))}
+                disabled={historyLoading || historyOffset === 0}
+                aria-label="Conversaciones anteriores"
+              >
+                Anterior
+              </button>
+              <span>
+                {historyOffset + 1}–{Math.min(historyOffset + conversations.length, conversationTotal)} de {conversationTotal}
+              </span>
+              <button
+                onClick={() => void loadHistory(historyOffset + historyPageSize)}
+                disabled={historyLoading || historyOffset + historyPageSize >= conversationTotal}
+                aria-label="Conversaciones siguientes"
+              >
+                Siguiente
+              </button>
             </div>
           )}
 
