@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Literal
 
@@ -336,6 +337,19 @@ def chat(request: ChatRequest):
             messages = get_conversation_messages(conversation_id)
 
         # 4. Limitar el contexto enviado al modelo, sin borrar el historial guardado
+        tool_context = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["parameters"]
+                }
+            }
+            for tool in get_available_tools()
+        ]
+        tool_context.append({"type": "browser_search"})
+
         messages = trim_conversation_history(
             messages,
             max_characters=MAX_CONTEXT_CHARACTERS - len(request.message),
@@ -343,7 +357,11 @@ def chat(request: ChatRequest):
             model=f"{provider}/{model}",
             fixed_messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": request.message}
+                {"role": "user", "content": request.message},
+                {
+                    "role": "system",
+                    "content": json.dumps(tool_context, ensure_ascii=False)
+                }
             ]
         )
 

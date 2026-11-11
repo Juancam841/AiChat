@@ -10,6 +10,9 @@ MAX_CONTEXT_CHARACTERS = 24_000
 MAX_CONTEXT_TURNS = 12
 MAX_CONTEXT_TOKENS = 8_192
 CONTEXT_OVERHEAD_RESERVE = 2_048
+MAX_SEARCH_CONTEXT_TOKENS = CONTEXT_OVERHEAD_RESERVE // 2
+MAX_TOOL_RESULT_TOKENS = CONTEXT_OVERHEAD_RESERVE // 2
+MAX_COMPLETION_TOKENS = 2_048
 
 
 def count_message_tokens(messages, model):
@@ -25,6 +28,29 @@ def count_message_tokens(messages, model):
         return math.ceil(len(text.encode("utf-8")) / 2)
 
 
+def truncate_text_to_tokens(text, model, max_tokens):
+    """Keep a text prefix within a token budget, marking any truncation."""
+    if max_tokens <= 0:
+        return ""
+
+    if count_message_tokens([{"role": "user", "content": text}], model) <= max_tokens:
+        return text
+
+    marker = "\n[Contenido reducido para respetar el presupuesto de contexto.]"
+    low = 0
+    high = len(text)
+
+    while low < high:
+        middle = (low + high + 1) // 2
+        candidate = text[:middle] + marker
+        if count_message_tokens([{"role": "user", "content": candidate}], model) <= max_tokens:
+            low = middle
+        else:
+            high = middle - 1
+
+    return text[:low].rstrip() + marker
+
+
 def trim_conversation_history(
     messages,
     max_characters,
@@ -35,7 +61,9 @@ def trim_conversation_history(
     """Keep recent complete turns within character and token budgets."""
     fixed_token_count = count_message_tokens(fixed_messages or [], model)
     available_tokens = (
-        max_tokens - CONTEXT_OVERHEAD_RESERVE - fixed_token_count
+        max_tokens
+        - CONTEXT_OVERHEAD_RESERVE
+        - fixed_token_count
     )
     if available_tokens < 0:
         raise ValueError(

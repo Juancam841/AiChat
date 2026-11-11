@@ -4,6 +4,13 @@ import logging
 
 from litellm import completion
 
+from conversation_context import (
+    MAX_COMPLETION_TOKENS,
+    MAX_SEARCH_CONTEXT_TOKENS,
+    MAX_TOOL_RESULT_TOKENS,
+    count_message_tokens,
+    truncate_text_to_tokens
+)
 from config import PROVIDERS
 from models import MODELS
 from model_router import get_model_candidates
@@ -13,6 +20,19 @@ from tool_manager import get_available_tools, execute_tool
 
 
 logger = logging.getLogger(__name__)
+
+
+def _build_search_instruction(instructions, search_context, model=None):
+    content = (
+        instructions
+        + "\n\nRESULTADOS DE BÚSQUEDA:\n"
+        + json.dumps(search_context, ensure_ascii=False, default=str)
+    )
+    return truncate_text_to_tokens(
+        content,
+        model=model,
+        max_tokens=MAX_SEARCH_CONTEXT_TOKENS
+    )
 
 
 SYSTEM_PROMPT = """
@@ -98,6 +118,7 @@ def ask_model(provider, model, messages):
         response = completion(
             model=f"{provider}/{model}",
             messages=formatted_messages,
+            max_tokens=MAX_COMPLETION_TOKENS,
             api_key=api_key
         )
 
@@ -227,6 +248,7 @@ def ask_model_with_tools(
                 messages=conversation,
                 tools=tool_definitions,
                 tool_choice="auto",
+                max_tokens=MAX_COMPLETION_TOKENS,
                 api_key=api_key
             )
 
@@ -356,13 +378,31 @@ def ask_model_with_tools(
                 }
 
             # 11. Devolver resultado al modelo
+            used_tool_tokens = sum(
+                count_message_tokens(
+                    [{"role": "user", "content": item.get("content") or ""}],
+                    f"{provider}/{model}"
+                )
+                for item in conversation
+                if item.get("role") == "tool"
+            )
+            remaining_tool_tokens = max(
+                0,
+                MAX_TOOL_RESULT_TOKENS - used_tool_tokens
+            )
+            tool_result = json.dumps(
+                result,
+                ensure_ascii=False,
+                default=str
+            )
+
             conversation.append({
                 "role": "tool",
                 "tool_call_id": call.id,
-                "content": json.dumps(
-                    result,
-                    ensure_ascii=False,
-                    default=str
+                "content": truncate_text_to_tokens(
+                    tool_result,
+                    model=f"{provider}/{model}",
+                    max_tokens=remaining_tool_tokens
                 )
             })
 
@@ -425,6 +465,7 @@ def ask_model_with_native_search(provider, model, messages):
                 }
             ],
             tool_choice="required",
+            max_tokens=MAX_COMPLETION_TOKENS,
             api_key=api_key
         )
 
@@ -617,7 +658,7 @@ def ask_model_with_manual_search(provider, model, messages):
         "fuentes": search_results
     }
 
-    search_instruction = (
+    search_instruction = _build_search_instruction(
         "Responde la consulta del usuario utilizando "
         "las siguientes fuentes obtenidas mediante "
         "una búsqueda web.\n\n"
@@ -628,13 +669,9 @@ def ask_model_with_manual_search(provider, model, messages):
         "prioriza la información más reciente.\n"
         "Si las fuentes no permiten responder con certeza, "
         "indica esa limitación.\n"
-        "Incluye enlaces a las fuentes cuando sean relevantes.\n\n"
-        "RESULTADOS DE BÚSQUEDA:\n"
-        + json.dumps(
-            search_context,
-            ensure_ascii=False,
-            default=str
-        )
+        "Incluye enlaces a las fuentes cuando sean relevantes.",
+        search_context,
+        model=f"{provider}/{model}"
     )
 
     # 7. Colocar las instrucciones antes de la consulta
@@ -847,7 +884,7 @@ def ask_model_with_search_fallback(
             "fuentes": search_results
         }
 
-        search_instruction = (
+        search_instruction = _build_search_instruction(
             "Responde la consulta del usuario utilizando "
             "las siguientes fuentes obtenidas mediante "
             "una búsqueda web.\n\n"
@@ -859,13 +896,9 @@ def ask_model_with_search_fallback(
             "que no estén respaldados por las fuentes.\n"
             "Si las fuentes no permiten responder con certeza, "
             "indica esa limitación.\n"
-            "Incluye enlaces a las fuentes cuando sean relevantes.\n\n"
-            "RESULTADOS DE BÚSQUEDA:\n"
-            + json.dumps(
-                search_context,
-                ensure_ascii=False,
-                default=str
-            )
+            "Incluye enlaces a las fuentes cuando sean relevantes.",
+            search_context,
+            model=None
         )
 
         messages_with_context = [
