@@ -65,5 +65,5 @@ La API todavía no incluye autenticación. Mantén el backend en una máquina lo
 Para regenerar `requirements.lock` después de cambiar dependencias directas, instala [uv](https://docs.astral.sh/uv/) y ejecuta desde la raíz:
 
 ```bash
-uv pip compile --universal --python-version 3.11 --generate-hashes requirements.txt -o requirements.lock
+uv pip compile --universal --python-version 3.10 --generate-hashes requirements.txt -o requirements.lock
 ```
