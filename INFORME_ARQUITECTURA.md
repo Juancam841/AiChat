@@ -20,7 +20,7 @@ La estructura fuente visible incluye:
 1. Al iniciar, FastAPI inicializa SQLite y migra las columnas de métricas de búsqueda. La importación del backend registra la calculadora y la búsqueda de Tavily.
 2. La interfaz carga conversaciones y el catálogo. `/providers` devuelve proveedores configurados, proveedores con modelos habilitados y `available`, la intersección que utiliza el selector manual. `/models` entrega los modelos habilitados del proveedor solicitado.
 3. El usuario envía mensaje, conversación, estrategia (`manual`, `free_first` o `best_available`), proveedor/modelo y `web_search`. La API limita el mensaje a 24.000 caracteres.
-4. En una conversación existente, la API recupera mensajes y reduce el contexto enviado a un máximo de 12 turnos completos y 24.000 caracteres contando el mensaje nuevo. El historial completo permanece en SQLite.
+4. En una conversación existente, la API recupera mensajes y reduce el contexto enviado a un máximo de 12 turnos completos, 24.000 caracteres y 8.192 tokens estimados contando el mensaje nuevo y el prompt del sistema. El historial completo permanece en SQLite.
 5. En modo manual se respeta el modelo elegido. Si se activa búsqueda web, se intenta búsqueda nativa cuando el modelo la declara y luego Tavily; de lo contrario, un modelo compatible puede usar la calculadora. En modo automático, el router filtra modelos configurados, habilitados y dentro de cuota; `free_first` prioriza los gratuitos y `best_available` conserva el orden del catálogo. El fallback intenta candidatos posteriores si uno falla.
 6. Tras una respuesta correcta se crea una conversación nueva, si corresponde, y se guardan mensaje del usuario, respuesta, título y modelo utilizado. El backend responde con texto, modelo, proveedor y fuentes de búsqueda.
 7. La interfaz muestra Markdown, fuentes y errores. Al abrir una conversación anterior recupera mensajes, pero no las fuentes asociadas a las respuestas porque estas no se persisten.
@@ -35,7 +35,7 @@ La estructura fuente visible incluye:
 - **Cuotas y utilización:** `quota_manager.py` calcula consumo por día, mes o total; `usage_manager.py` registra cada llamada a proveedor en SQLite.
 - **Persistencia:** database.py gestiona conversaciones, mensajes, índices y una migración para columnas de métricas de búsqueda.
 - **Herramientas:** tool_manager.py registra herramientas y valida argumentos con JSON Schema. tools_web_search.py implementa Tavily; tools_calculator.py evalúa expresiones mediante un subconjunto de AST.
-- **Contexto:** `conversation_context.py` limita turnos completos y caracteres enviados al modelo.
+- **Contexto:** `conversation_context.py` limita turnos completos, caracteres y tokens estimados enviados al modelo.
 - **Frontend:** `frontend/src/App.tsx` administra catálogo, estrategia, chat, búsqueda e historial; `frontend/src/services/api.ts` centraliza las llamadas HTTP.
 
 ## Hallazgos del diagnóstico original (referencia histórica)
@@ -84,7 +84,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - `/chat` conecta `ask_model_with_tools` para modelos compatibles en modo manual y automático. En el chat normal solo expone la calculadora; la búsqueda web continúa bajo el control de la casilla de búsqueda.
 - Las conversaciones nuevas se crean después de recibir una respuesta del modelo, evitando registros vacíos cuando falla la consulta al proveedor.
 - La búsqueda nativa registra proveedor y modelo, no el objeto completo de respuesta del proveedor.
-- El contexto enviado al modelo se limita a un máximo de 12 turnos completos y 24.000 caracteres por solicitud; la base conserva el historial íntegro.
+- El contexto enviado al modelo se limita a un máximo de 12 turnos completos, 24.000 caracteres y un presupuesto de tokens; la base conserva el historial íntegro.
 - Las cuotas pueden medir consumo por día, mes o acumulado total en UTC; los topes numéricos se configuran por modelo en `quota_config.py` y permanecen sin límite mientras sean `None`.
 - `/providers` expone `available`, la intersección entre proveedores configurados y proveedores con modelos habilitados; la interfaz usa esa lista para el selector manual.
 - La interfaz ofrece `manual`, `free_first` y `best_available`; esta última utiliza el orden declarado en `models.py`.
@@ -107,7 +107,7 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 
 1. **P0 condicional — API sin autenticación.** Todas las rutas son accesibles a cualquier cliente que alcance el backend. CORS limita navegadores, no clientes directos. Uvicorn usa loopback por defecto; no se debe enlazar a una interfaz de red ni publicar el servicio sin añadir autenticación.
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
-3. **P2 — El presupuesto del historial cuenta caracteres, no tokens.** El recorte controla tamaño y conserva turnos completos, pero el número de tokens varía por modelo e idioma; el límite no garantiza ajustarse al contexto real del proveedor.
+3. **P2 — El presupuesto del historial solo estima parte de la solicitud.** LiteLLM cuenta tokens para los mensajes y el prompt del sistema; si no encuentra un tokenizador, se usa una estimación por bytes UTF-8. Las instrucciones de búsqueda, los esquemas de herramientas y la salida del modelo pueden exceder la reserva de 2.048 tokens.
 4. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
 5. **P2 — Paginación y retención parciales.** El listado de conversaciones usa páginas de 25 elementos, con máximo de 100 por consulta. El detalle de una conversación y las estadísticas de uso todavía se devuelven completos, y no hay política de retención.
 6. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
@@ -116,7 +116,7 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; contexto limitado por caracteres, no por tokens; paginación/retención incompletas para mensajes y estadísticas de uso.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; presupuesto de tokens estimado y con reserva limitada para instrucciones adicionales; paginación/retención incompletas para mensajes y estadísticas de uso.
 - **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; pruebas backend aisladas; refactor de coordinación.
 
 ## Verificación de esta revisión

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from conversation_context import (
     MAX_CONTEXT_CHARACTERS,
+    MAX_CONTEXT_TOKENS,
     trim_conversation_history
 )
 
@@ -13,6 +14,7 @@ from usage_manager import get_usage_summary
 from config import CORS_ORIGINS, get_configured_providers
 
 from providers import (
+    SYSTEM_PROMPT,
     ask_model,
     ask_model_with_tools,
     ask_model_with_fallback,
@@ -326,7 +328,13 @@ def chat(request: ChatRequest):
         # 4. Limitar el contexto enviado al modelo, sin borrar el historial guardado
         messages = trim_conversation_history(
             messages,
-            max_characters=MAX_CONTEXT_CHARACTERS - len(request.message)
+            max_characters=MAX_CONTEXT_CHARACTERS - len(request.message),
+            max_tokens=MAX_CONTEXT_TOKENS,
+            model=f"{provider}/{model}",
+            fixed_messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": request.message}
+            ]
         )
 
         # 5. Agregar mensaje del usuario
