@@ -8,7 +8,7 @@ Aplicación personal de chat multimodelo con una API FastAPI, una interfaz React
 - Node.js 20 o posterior
 - Claves de API de al menos un proveedor compatible
 
-Las versiones directas del backend están fijadas en `requirements.txt`; el frontend usa `package-lock.json`.
+Las dependencias directas del backend están declaradas en `requirements.txt` y sus versiones transitivas están fijadas con hashes en `requirements.lock`; el frontend usa `package-lock.json`.
 
 ## Configuración
 
@@ -27,7 +27,7 @@ Solo hace falta configurar los proveedores que quieras utilizar. `TAVILY_API_KEY
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 uvicorn main:app --reload
 ```
 
@@ -60,3 +60,10 @@ Cuando una cuota tiene un límite numérico, el backend reserva capacidad en SQL
 ## Exposición del backend
 
 La API todavía no incluye autenticación. Mantén el backend en una máquina local o en una red privada de confianza; no lo publiques directamente en Internet.
+
+
+Para regenerar `requirements.lock` después de cambiar dependencias directas, instala [uv](https://docs.astral.sh/uv/) y ejecuta desde la raíz:
+
+```bash
+uv pip compile --universal --python-version 3.10 --generate-hashes requirements.txt -o requirements.lock
+```

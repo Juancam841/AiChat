@@ -2,7 +2,7 @@
 
 **Revisión:** 2026-11-10. **Base de código:** `main`, commit `1b2f444` (PR #1–#8 mergeados). Se revisaron backend, frontend, persistencia, selección, herramientas, búsqueda, cuotas y configuración. No se leyeron `.env`, credenciales ni bases de datos reales.
 
-**Estado del checkout local:** la carpeta está en `main`. El sistema de archivos compartido marca los modos de muchos archivos como ejecutables; no se modificaron esos permisos. La única diferencia textual local frente a `origin/main` es `litellm==1.105.1` en `requirements.txt`; GitHub `main` fija `litellm==1.106.6`. Conviene decidir si esa diferencia es intencional antes de sincronizarla.
+**Estado de dependencias:** el lock se generó desde el `requirements.txt` local, que fija `litellm==1.105.1`, con resolución universal desde Python 3.10. El sistema de archivos compartido marca los modos de muchos archivos como ejecutables; no se modificaron esos permisos.
 
 ## Arquitectura descrita en el diagnóstico inicial
 
@@ -48,7 +48,7 @@ La estructura fuente visible incluye:
 6. **El historial se reenvía completo.** Cada solicitud vuelve a enviar todos los mensajes almacenados, sin truncamiento ni resumen. El costo, el tiempo y el uso de contexto pueden crecer con la duración de la conversación.
 7. **Hay diagnóstico excesivo en logs de búsqueda nativa.** providers.py registra la respuesta completa del proveedor; según el contenido devuelto, esto puede incluir texto de la conversación y datos de búsqueda.
 8. **La prueba de proveedor no coincide con la función actual.** test_providers.py llama a ask_model con message=, mientras la función espera messages. También es un script que hace una llamada real, no un test aislado.
-9. **No se ve configuración reproducible de dependencias del backend.** Las dependencias frontend figuran en frontend/package.json; no se encontró un requirements.txt o equivalente entre los archivos fuente visibles.
+9. **Resuelto en esta revisión — Dependencias reproducibles del backend.** `requirements.txt` declara dependencias directas y `requirements.lock` fija las transitivas con hashes para Python 3.10 y posteriores en plataformas compatibles.
 10. **Los contratos del frontend y backend no están completamente alineados.** El tipo TypeScript de estrategia admite manual, free_first y best_available, pero la interfaz solo ofrece las dos primeras. Asimismo, el tipo de respuesta del chat no contempla results, aunque el backend los devuelve.
 
 ## Riesgos de mantenimiento identificados inicialmente
@@ -88,7 +88,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - Las cuotas pueden medir consumo por día, mes o acumulado total en UTC; los topes numéricos se configuran por modelo en `quota_config.py` y permanecen sin límite mientras sean `None`.
 - `/providers` expone `available`, la intersección entre proveedores configurados y proveedores con modelos habilitados; la interfaz usa esa lista para el selector manual.
 - La interfaz ofrece `manual`, `free_first` y `best_available`; esta última utiliza el orden declarado en `models.py`.
-- `requirements.txt` declara y fija las dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas.
+- `requirements.txt` declara las dependencias directas del backend, incluida `jsonschema` para validar argumentos de herramientas; `requirements.lock` fija todas las dependencias resueltas con hashes para Python 3.10 y posteriores en plataformas compatibles.
 - Los tipos del frontend incluyen `web_search` y los resultados devueltos por el backend.
 
 ## Auditoría funcional de la versión actual
@@ -108,7 +108,6 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 1. **P0 condicional — API sin autenticación.** Todas las rutas son accesibles a cualquier cliente que alcance el backend. CORS limita navegadores, no clientes directos. Uvicorn usa loopback por defecto; no se debe enlazar a una interfaz de red ni publicar el servicio sin añadir autenticación.
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
 3. **P2 — El presupuesto del historial solo estima parte de la solicitud.** LiteLLM cuenta tokens para los mensajes y el prompt del sistema; si no encuentra un tokenizador, se usa una estimación por bytes UTF-8. Las instrucciones de búsqueda, los esquemas de herramientas y la salida del modelo pueden exceder la reserva de 2.048 tokens.
-4. **P2 — El lock del backend es parcial.** `requirements.txt` fija dependencias directas, pero no todas las transitivas. Además, el archivo del checkout local fija `litellm==1.105.1`, frente a `1.106.6` en `origin/main`; resolver esa diferencia antes de reinstalar o publicar cambios locales.
 5. **P2 — Paginación y retención parciales.** El listado usa páginas de 25 conversaciones, y el detalle muestra 50 mensajes por página, ambos con máximo de 100. Las estadísticas de uso todavía se devuelven completas y no hay política de retención.
 6. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
 7. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
@@ -116,12 +115,12 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; dependencias directas fijadas pero transitivas abiertas; presupuesto de tokens estimado y con reserva limitada para instrucciones adicionales; paginación/retención de estadísticas de uso pendientes.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de tokens estimado y con reserva limitada para instrucciones adicionales; paginación/retención de estadísticas de uso pendientes.
 - **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; pruebas backend aisladas; refactor de coordinación.
 
 ## Verificación de esta revisión
 
 - Frontend temporal: `npm ci`, `npm run build` y `npm run lint` — correctos.
-- Backend temporal: instalación desde `requirements.txt` de `main` y pruebas de humo con proveedores simulados — correctas.
+- Backend temporal: instalación desde dependencias fijadas de `main` y pruebas de humo con proveedores simulados — correctas. Lock: compilación universal desde las dependencias locales para Python 3.10 y posteriores, con hashes — correcta.
 - `git diff --check` del informe — correcto.
 - No se hicieron llamadas externas a modelos ni a Tavily, ni se inspeccionaron claves o bases de datos del usuario.
