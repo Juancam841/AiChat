@@ -2,7 +2,7 @@
 
 **Revisión:** 2026-11-10. **Base de código:** `main`, commit `1b2f444` (PR #1–#8 mergeados). Se revisaron backend, frontend, persistencia, selección, herramientas, búsqueda, cuotas y configuración. No se leyeron `.env`, credenciales ni bases de datos reales.
 
-**Estado de dependencias:** el lock se generó desde el `requirements.txt` local, que fija `litellm==1.105.1`, con resolución universal desde Python 3.10. El sistema de archivos compartido marca los modos de muchos archivos como ejecutables; no se modificaron esos permisos.
+**Estado de dependencias:** `requirements.txt` y `requirements.lock` fijan `litellm==1.105.1`; el lock resuelve dependencias transitivas de forma universal desde Python 3.10.
 
 ## Arquitectura descrita en el diagnóstico inicial
 
