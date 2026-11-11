@@ -111,15 +111,19 @@ export async function sendMessage(
   return data as ChatResponse
 }
 
-export async function getConversations(): Promise<Conversation[]> {
-  const response = await fetch(`${API_URL}/conversations`)
+export async function getConversations(
+  limit = 25,
+  offset = 0
+): Promise<ConversationsResponse> {
+  const response = await fetch(
+    `${API_URL}/conversations?limit=${limit}&offset=${offset}`
+  )
 
   if (!response.ok) {
     throw new Error('No fue posible cargar el historial.')
   }
 
-  const data: ConversationsResponse = await response.json()
-  return data.conversations
+  return response.json()
 }
 
 export async function getConversation(
