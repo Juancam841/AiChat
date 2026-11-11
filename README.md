@@ -55,6 +55,8 @@ Para limitar el tamaño del contexto, cada solicitud admite hasta 24.000 caracte
 
 Las cuotas locales se configuran por modelo en `quota_config.py`. Cada límite puede medirse por día, mes o acumulado total; los periodos diarios y mensuales usan UTC. Los valores `None` no imponen un tope, así que define valores de `requests` o `total_tokens` para activar una cuota.
 
+Cuando una cuota tiene un límite numérico, el backend reserva capacidad en SQLite antes de cada llamada al proveedor y la libera al registrar su consumo. Las reservas abandonadas caducan después de 120 minutos. Si se configura `total_tokens`, el backend reserva el saldo restante para una llamada activa hasta recibir el consumo real, por lo que esas llamadas se procesan de una en una para ese modelo.
+
 ## Exposición del backend
 
 La API todavía no incluye autenticación. Mantén el backend en una máquina local o en una red privada de confianza; no lo publiques directamente en Internet.

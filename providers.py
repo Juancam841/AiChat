@@ -7,6 +7,7 @@ from litellm import completion
 from config import PROVIDERS
 from models import MODELS
 from model_router import get_model_candidates
+from quota_manager import reserve_model_request
 from usage_manager import record_usage
 from tool_manager import get_available_tools, execute_tool
 
@@ -91,6 +92,7 @@ def ask_model(provider, model, messages):
 
     # 6. Enviar solicitud al modelo mediante LiteLLM
 
+    reservation_id = reserve_model_request(provider, model)
     try:
 
         response = completion(
@@ -104,7 +106,8 @@ def ask_model(provider, model, messages):
         record_usage(
             provider=provider,
             model=model,
-            success=False
+            success=False,
+            reservation_id=reservation_id
         )
 
         raise
@@ -128,7 +131,8 @@ def ask_model(provider, model, messages):
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        success=True
+        success=True,
+        reservation_id=reservation_id
     )
 
     # 9. Devolver la respuesta
@@ -216,6 +220,7 @@ def ask_model_with_tools(
 
     # 5. Ejecutar ciclo de herramientas
     for iteration in range(max_iterations + 1):
+        reservation_id = reserve_model_request(provider, model)
         try:
             response = completion(
                 model=f"{provider}/{model}",
@@ -229,7 +234,8 @@ def ask_model_with_tools(
             record_usage(
                 provider=provider,
                 model=model,
-                success=False
+                success=False,
+                reservation_id=reservation_id
             )
 
             logger.exception(
@@ -279,7 +285,8 @@ def ask_model_with_tools(
             completion_tokens=completion_tokens,
             success=True,
             web_search_requests=web_search_requests,
-            browser_open_requests=browser_open_requests
+            browser_open_requests=browser_open_requests,
+            reservation_id=reservation_id
         )
 
         # 7. Obtener respuesta
@@ -407,6 +414,7 @@ def ask_model_with_native_search(provider, model, messages):
     ]
 
     # 4. Ejecutar búsqueda nativa
+    reservation_id = reserve_model_request(provider, model)
     try:
         response = completion(
             model=f"{provider}/{model}",
@@ -430,7 +438,8 @@ def ask_model_with_native_search(provider, model, messages):
         record_usage(
             provider=provider,
             model=model,
-            success=False
+            success=False,
+            reservation_id=reservation_id
         )
 
         logger.exception(
@@ -482,7 +491,8 @@ def ask_model_with_native_search(provider, model, messages):
         completion_tokens=completion_tokens,
         success=True,
         web_search_requests=web_search_requests,
-        browser_open_requests=browser_open_requests
+        browser_open_requests=browser_open_requests,
+        reservation_id=reservation_id
     )
 
     # 8. Devolver respuesta

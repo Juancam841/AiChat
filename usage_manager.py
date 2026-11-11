@@ -11,7 +11,8 @@ def record_usage(
     completion_tokens=0,
     success=True,
     web_search_requests=0,
-    browser_open_requests=0
+    browser_open_requests=0,
+    reservation_id=None
 ):
     prompt_tokens = prompt_tokens or 0
     completion_tokens = completion_tokens or 0
@@ -49,6 +50,12 @@ def record_usage(
             web_search_requests,
             browser_open_requests
         ))
+
+        if reservation_id is not None:
+            connection.execute(
+                "DELETE FROM quota_reservations WHERE id = ?",
+                (reservation_id,)
+            )
 
         connection.commit()
 
@@ -98,5 +105,34 @@ def get_usage_summary(since=None):
             for row in rows
         }
 
+    finally:
+        connection.close()
+
+
+def get_active_reservation_summary(since=None):
+    now = datetime.now(timezone.utc).isoformat()
+    connection = get_connection()
+
+    try:
+        query = """
+            SELECT provider, model, COUNT(*) AS pending_requests,
+                   SUM(reserved_tokens) AS reserved_tokens
+            FROM quota_reservations
+            WHERE expires_at > ?
+        """
+        parameters = [now]
+        if since is not None:
+            query += " AND created_at >= ?"
+            parameters.append(since)
+        query += " GROUP BY provider, model"
+        rows = connection.execute(query, parameters).fetchall()
+
+        return {
+            f"{row['provider']}/{row['model']}": {
+                "pending_requests": row["pending_requests"],
+                "reserved_tokens": row["reserved_tokens"] or 0
+            }
+            for row in rows
+        }
     finally:
         connection.close()

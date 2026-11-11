@@ -75,6 +75,18 @@ def initialize_database():
 
             CREATE INDEX IF NOT EXISTS idx_usage_created_at
             ON usage_records(created_at);
+
+            CREATE TABLE IF NOT EXISTS quota_reservations (
+                id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                reserved_tokens INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_quota_reservations_model
+            ON quota_reservations(provider, model, expires_at);
         """)
 
         # Migración compatible con bases de datos existentes
