@@ -31,14 +31,11 @@ from tool_manager import get_available_tools
 
 from database import (
     initialize_database,
-    create_conversation,
     save_turn,
     get_conversation_messages,
     get_conversation,
     get_all_conversations,
-    delete_conversation,
-    update_conversation_title,
-    update_conversation_model
+    delete_conversation
 )
 
 
@@ -399,17 +396,8 @@ def chat(request: ChatRequest):
                 provider = result["provider"]
                 model = result["model"]
 
-        # Crear conversaciones nuevas solo después de una respuesta correcta.
-        if conversation_id is None:
-            conversation_id = create_conversation(
-                provider=provider,
-                model=model
-            )
-
-        # 8. Asignar título automático
-
+        title = None
         if request.conversation_id is None:
-
             title = " ".join(
                 request.message.strip().split()
             )
@@ -417,25 +405,15 @@ def chat(request: ChatRequest):
             if len(title) > 50:
                 title = title[:47].rstrip() + "..."
 
-            update_conversation_title(
-                conversation_id,
-                title
-            )
-
-        # Persistir el turno completo y sus fuentes de forma atómica.
-        save_turn(
+        # Crear la conversación y guardar todo el turno en una transacción.
+        conversation_id = save_turn(
             conversation_id,
             request.message,
             response,
-            search_results
-        )
-
-        # 10. Actualizar proveedor y modelo utilizados
-
-        update_conversation_model(
-            conversation_id,
-            provider,
-            model
+            results=search_results,
+            provider=provider,
+            model=model,
+            title=title
         )
 
         # 11. Devolver respuesta y fuentes
