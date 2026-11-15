@@ -98,6 +98,12 @@ def process_chat(
             raise ConversationNotFoundError(conversation_id)
         messages = get_conversation_messages(conversation_id)
 
+    # Search results are presentation metadata; providers only receive chat fields.
+    messages = [
+        {"role": item["role"], "content": item.get("content", "")}
+        for item in messages
+    ]
+
     tool_context = [
         {
             "type": "function",

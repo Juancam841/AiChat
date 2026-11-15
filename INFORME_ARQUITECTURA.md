@@ -195,3 +195,11 @@ La caja de mensaje envía con Enter, conserva Shift+Enter para salto de línea, 
 1. Añadir pruebas de interacción para envío por teclado y normalización de respuestas sin probar proveedores reales.
 2. Revisar en navegador escritorio y móvil el ajuste de texto, tarjetas de fuentes, selectores, foco visible y contraste.
 3. Continuar el pendiente backend registrado: dividir las responsabilidades internas de `providers.py`; mantener condicionados los límites de cuota, retención y autenticación a las decisiones/configuración que faltan.
+
+## Seguimiento del modo agente de investigación — 2026-11-15
+
+- El chat expone `agent_mode` en la solicitud `POST /chat`. En modo automático, `chat_service.py` ordena candidatos generales por estrategia e intenta primero los modelos habilitados, configurados, con cuota y compatibles con llamadas a herramientas. Cada intento permite hasta 12 rondas de herramientas; al cambiar de candidato por error, el flujo puede reiniciarse y repetir trabajo previo.
+- Las herramientas del agente son la calculadora y la búsqueda Tavily. Si fallan todos los modelos compatibles con herramientas, se hace una búsqueda Tavily y se intenta sintetizar con los modelos generales restantes, aunque no acepten llamadas a herramientas. Este último recurso produce una síntesis con fuentes, pero no conserva el ciclo agentico. La selección manual mantiene el proveedor/modelo elegido y requiere soporte de herramientas.
+- Los logs registran la lista de modelos candidatos con herramientas y la lista general usada en el fallback. Los proveedores/modelos solo entran si el backend reconoce la clave del proveedor, están habilitados, declaran capacidad `general` y tienen cuota disponible.
+- El historial persistido puede adjuntar `results` para que la interfaz muestre las fuentes. `chat_service.py` elimina esos metadatos de presentación antes de enviar el historial al proveedor, que recibe `role` y `content`; las fuentes permanecen guardadas y visibles en la conversación.
+- El modo y sus fallbacks se incorporaron en los PR #30–#32; el saneamiento del historial está en el PR #33, pendiente de fusión. No se ejecutaron pruebas para este último ajuste.
