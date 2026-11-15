@@ -1,6 +1,6 @@
 # Informe de arquitectura y auditoría funcional de AIChat
 
-**Revisión:** 2026-11-10. **Base de código:** `main`, commit `1b2f444` (PR #1–#8 mergeados). Se revisaron backend, frontend, persistencia, selección, herramientas, búsqueda, cuotas y configuración. No se leyeron `.env`, credenciales ni bases de datos reales.
+**Revisión inicial:** 2026-11-10, commit `1b2f444` (PR #1–#8). **Reauditoría backend:** 2026-11-15, `main` en `3d57388` (PR #21–#24 integrados). Se contrastaron los hallazgos iniciales con el código actual, sin leer `.env`, credenciales ni bases de datos reales.
 
 **Estado de dependencias:** `requirements.txt` y `requirements.lock` fijan `litellm==1.105.1`; el lock resuelve dependencias transitivas de forma universal desde Python 3.10.
 
@@ -10,25 +10,26 @@ AIChat es una aplicación con frontend React/Vite y backend FastAPI. El backend 
 
 La estructura fuente visible incluye:
 
-- Backend: main.py, providers.py, model_router.py, models.py, config.py, quota_manager.py, usage_manager.py, database.py y módulos de herramientas.
+- Backend: main.py (rutas HTTP), chat_service.py (orquestación del chat), providers.py, model_router.py, models.py, config.py, quota_manager.py, usage_manager.py, database.py y módulos de herramientas.
 - Frontend: frontend/src/App.tsx, frontend/src/services/api.ts y estilos; Vite y TypeScript se configuran en frontend/.
-- Pruebas o scripts de prueba: test_providers.py y test_groq.py.
-- Copias antiguas: main_backup.py y models_backup.py.
+- Pruebas backend actuales: `tests/test_chat_routes.py`, `tests/test_context_budget.py` y `tests/test_usage_pagination.py`.
+- Los scripts `test_providers.py` y `test_groq.py`, y las copias `main_backup.py` y `models_backup.py` descritas en la revisión inicial, ya no están en el repositorio.
 
 ## Flujo de ejecución vigente
 
 1. Al iniciar, FastAPI inicializa SQLite y migra las columnas de métricas de búsqueda. La importación del backend registra la calculadora y la búsqueda de Tavily.
 2. La interfaz carga conversaciones y el catálogo. `/providers` devuelve proveedores configurados, proveedores con modelos habilitados y `available`, la intersección que utiliza el selector manual. `/models` entrega los modelos habilitados del proveedor solicitado.
 3. El usuario envía mensaje, conversación, estrategia (`manual`, `free_first` o `best_available`), proveedor/modelo y `web_search`. La API limita el mensaje a 24.000 caracteres.
-4. En una conversación existente, la API limita la entrada a 12 turnos completos, 24.000 caracteres y 8.192 tokens estimados, contando el mensaje nuevo, el prompt del sistema y los esquemas de herramientas. Reserva 2.048 tokens para resultados que se agregan después: hasta 1.024 de búsqueda y 1.024 de herramientas. Las respuestas del modelo tienen un máximo de 2.048 tokens. El historial completo permanece en SQLite.
-5. En modo manual se respeta el modelo elegido. Si se activa búsqueda web, se intenta búsqueda nativa cuando el modelo la declara y luego Tavily; de lo contrario, un modelo compatible puede usar la calculadora. En modo automático, el router filtra modelos configurados, habilitados y dentro de cuota; `free_first` prioriza los gratuitos y `best_available` conserva el orden del catálogo. El fallback intenta candidatos posteriores si uno falla.
+4. En una conversación existente, la API limita la entrada a 12 turnos completos, 24.000 caracteres y un máximo global de 8.192 tokens estimados, contando el mensaje nuevo, el prompt del sistema y los esquemas de herramientas; para modelos con ventana declarada, reduce el presupuesto para reservar la respuesta. Reserva 2.048 tokens para resultados que se agregan después: hasta 1.024 de búsqueda y 1.024 de herramientas. Las respuestas del modelo tienen un máximo de 2.048 tokens. El historial completo permanece en SQLite.
+5. `main.py` valida la solicitud y delega el flujo a `chat_service.py`. En modo manual se respeta el modelo elegido. Si se activa búsqueda web, se intenta búsqueda nativa cuando el modelo la declara y luego Tavily; de lo contrario, un modelo compatible puede usar la calculadora. En modo automático, el router filtra modelos configurados, habilitados y dentro de cuota; `free_first` prioriza los gratuitos y `best_available` conserva el orden del catálogo. El fallback intenta candidatos posteriores si uno falla.
 6. Tras una respuesta correcta se crea una conversación nueva, si corresponde, y se guardan mensaje del usuario, respuesta, título y modelo utilizado. El backend responde con texto, modelo, proveedor y fuentes de búsqueda.
-7. La interfaz muestra Markdown, fuentes y errores. Al abrir una conversación anterior recupera mensajes, pero no las fuentes asociadas a las respuestas porque estas no se persisten.
+7. La interfaz muestra Markdown, fuentes y errores. Al recuperar una conversación anterior, la API pagina los mensajes y devuelve las fuentes persistidas para cada respuesta.
 8. Cada llamada a proveedor registra tokens, resultado y métricas de búsqueda. `/usage` muestra agregados históricos; `/quotas` muestra el consumo del periodo configurado.
 
 ## Componentes y responsabilidades vigentes
 
-- **API y coordinación:** `main.py` define chat, catálogo, uso, cuotas y CRUD de conversaciones; además decide qué flujo de proveedor invocar.
+- **API:** `main.py` define las rutas de chat, catálogo, uso, cuotas y CRUD de conversaciones; valida las solicitudes y convierte errores del servicio en respuestas HTTP.
+- **Orquestación del chat:** `chat_service.py` selecciona modelo, prepara el contexto, escoge el flujo de proveedor y persiste el turno, sin depender de FastAPI.
 - **Proveedores y fallback:** `providers.py` valida modelos y claves, llama a LiteLLM, registra uso, ejecuta herramientas y gestiona búsqueda nativa/Tavily.
 - **Catálogo y selección:** `models.py` mantiene manualmente capacidades, costos, soporte de herramientas y orden de prioridad. `model_router.py` filtra por proveedor, capacidad y cuota.
 - **Configuración:** config.py lee claves desde variables de entorno mediante python-dotenv. No se inspeccionaron sus valores.
@@ -118,6 +119,39 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 - **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación de estadísticas disponible de forma optativa, sin política de retención; suite aislada con pruebas unitarias y tres contratos de rutas/persistencia, pendiente ampliar escenarios y endpoints; separación HTTP/servicio para el chat completada, aunque `providers.py` mantiene responsabilidades mezcladas.
 - **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; separar transporte, selección/fallback, herramientas, búsqueda y registro de uso dentro de `providers.py`.
 
+## Reauditoría de hallazgos iniciales — 2026-11-15
+
+Revisé el backend de `main` en `3d57388`, incluidos los cambios integrados en los PR #21–#24, junto con los contratos del frontend relacionados. La tabla valida los diez hallazgos del diagnóstico original:
+
+| # | Hallazgo original | Estado actual |
+|---|---|---|
+| 1 | La interfaz no exponía búsqueda web. | **Resuelto.** La interfaz envía `web_search` y presenta fuentes. |
+| 2 | El ciclo de herramientas no parecía conectado. | **Resuelto en el flujo.** `chat_service.py` conecta chat manual y automático con las rutas de herramientas y búsqueda. No se validó el protocolo de tool-calling de cada proveedor real. |
+| 3 | Las cuotas no tenían periodos ni topes efectivos. | **Parcial; límite numérico aceptado provisionalmente.** Uso y reservas se contabilizan por periodo UTC y las reservas son transaccionales. Los límites configurados siguen en `None`, por lo que no restringen consumo. |
+| 4 | Selector y catálogo de proveedores podían divergir. | **Resuelto.** `/providers` expone `available` y la interfaz lo usa; el router filtra configuración, modelos habilitados y cuota. |
+| 5 | Una llamada fallida podía dejar conversaciones vacías. | **Resuelto.** `save_turn` crea la conversación y guarda el turno en una transacción después de recibir respuesta; la suite existente cubre el fallo sin persistencia. |
+| 6 | Se reenviaba el historial completo. | **Parcial; las ventanas desconocidas siguen abiertas.** El contexto limita turnos, caracteres y tokens; ajusta el presupuesto para ventanas declaradas. Los modelos con ventana desconocida conservan el límite general. |
+| 7 | La búsqueda nativa registraba la respuesta completa. | **Resuelto para el hallazgo observado.** El log de éxito solo registra proveedor y modelo. Como mejora defensiva, aún conviene sanear textos de excepción de SDK antes de registrarlos. |
+| 8 | El script de prueba no coincidía con `ask_model` y dependía de servicios reales. | **Resuelto/reemplazado.** El script antiguo ya no está en el repositorio; hay 14 pruebas aisladas para contexto, uso y contratos de rutas, sin llamadas reales a proveedores. |
+| 9 | Faltaban dependencias backend reproducibles. | **Resuelto.** `requirements.txt` declara dependencias directas y `requirements.lock` fija hashes y versiones transitivas. |
+| 10 | Los tipos frontend no coincidían con el contrato de chat. | **Resuelto.** Estrategias, `web_search` y `results` están representados en los tipos frontend y en la interfaz. |
+
+También se verificaron los riesgos estructurales iniciales: los archivos de respaldo mencionados ya no existen; la paginación está disponible para conversaciones, mensajes y `/usage`; la retención aún no está definida; el catálogo de modelos sigue mantenido manualmente; y `main.py` ya delega el flujo de chat, mientras `providers.py` conserva responsabilidades mezcladas.
+
+### Pendientes aceptados o condicionados
+
+- No fijar cuotas numéricas hasta que el propietario defina los límites por modelo.
+- Mantener la API sin autenticación solo mientras se limite a loopback o una red privada de confianza; cualquier exposición más amplia requiere controles de acceso.
+- No borrar estadísticas sin acordar retención, porque los datos históricos alimentan cuotas acumuladas.
+- Completar ventanas de contexto cuando se disponga de datos fiables para los modelos que hoy declaran `None`.
+
+### Sugerencias nuevas de esta auditoría
+
+1. **P2 — Separar liveness de readiness.** `/health` siempre devuelve `healthy` y no comprueba que SQLite esté disponible. Si se usa para supervisar un despliegue, añadir una comprobación de preparación de la base de datos o documentar `/health` solo como señal de proceso activo.
+2. **P2 — Definir tiempos máximos para proveedores externos.** Las llamadas a LiteLLM y `TavilyClient` no pasan un timeout explícito desde la aplicación. Configurar límites de conexión y respuesta para que una llamada colgada no retenga capacidad del servidor.
+3. **P2 — Rechazar mensajes vacíos tras normalización en la API.** El frontend aplica `trim()`, pero `ChatRequest` solo exige longitud mínima de un carácter. Clientes directos pueden enviar espacios, disparar una llamada innecesaria al proveedor y crear una conversación con el título genérico.
+4. **P2 — Sanear mensajes de excepciones en logs externos.** Aunque no se registra el objeto completo de respuesta, `logger.exception` imprime el texto de la excepción del SDK. Conviene filtrar credenciales, cuerpos de petición y fragmentos de conversación antes de registrar errores de proveedores.
+
 ## Verificación de esta revisión
 
 - Frontend temporal: `npm ci`, `npm run build` y `npm run lint` — correctos.
@@ -136,3 +170,9 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 - La ruta `/chat` ahora delega la selección de modelo, preparación del contexto, llamada al proveedor y persistencia en `chat_service.py`. La capa HTTP conserva la validación de entrada y traduce errores del servicio a los mismos códigos y cuerpos de respuesta.
 - Los tests de rutas existentes se actualizaron para simular dependencias en el nuevo módulo; no se añadieron casos.
 - La separación es parcial: la lógica interna de `providers.py` sigue pendiente de dividirse.
+
+## Verificación de la reauditoría backend — 2026-11-15
+
+- Suite existente: 14 pruebas aprobadas en Python 3.12; no se añadieron pruebas durante esta reauditoría.
+- `compileall` para backend y pruebas, y `git diff --check` — correctos.
+- Revisión estática de rutas, selección, contexto, cuotas, persistencia, logging y contratos de búsqueda. No se leyeron credenciales ni bases de datos reales ni se invocaron proveedores externos.
