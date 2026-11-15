@@ -208,3 +208,11 @@ def supports_tools(provider, model_id):
         for item in MODELS.get(provider, [])
     )
 
+
+def get_context_window(provider, model_id):
+    """Return the declared context window, or None when it is unknown."""
+    for item in MODELS.get(provider, []):
+        if item["id"] == model_id:
+            return item.get("context_window")
+    return None
+
