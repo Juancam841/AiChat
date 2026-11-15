@@ -107,16 +107,16 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 
 1. **P0 condicional — API sin autenticación.** Todas las rutas son accesibles a cualquier cliente que alcance el backend. CORS limita navegadores, no clientes directos. Uvicorn usa loopback por defecto; no se debe enlazar a una interfaz de red ni publicar el servicio sin añadir autenticación.
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
-3. **P2 — El presupuesto de entrada no se adapta a la ventana real de cada modelo.** Se limita la entrada a 8.192 tokens, se cuentan los esquemas de herramientas, se reservan 1.024 tokens cada uno para resultados de búsqueda y de herramientas y se limita la salida a 2.048 tokens. Cuando LiteLLM no identifica un tokenizador, se estima por bytes UTF-8. Varios modelos no declaran `context_window`, por lo que el presupuesto global todavía no garantiza compatibilidad con la ventana de cada proveedor.
+3. **P2 — El presupuesto de entrada se adapta solo a ventanas declaradas.** Se limita la entrada a 8.192 tokens y, si el catálogo declara `context_window`, se resta el máximo de salida de 2.048 tokens antes de calcular el contexto. El recorte conserva las reservas existentes de 1.024 tokens para búsqueda y 1.024 para herramientas. Cuando LiteLLM no identifica un tokenizador, se estima por bytes UTF-8. Los modelos con `context_window: None` todavía usan el límite global y no tienen garantía de compatibilidad con su ventana real; los valores declarados también requieren mantenimiento.
 4. **P2 — Paginación y retención parciales.** El listado usa páginas de 25 conversaciones, y el detalle muestra 50 mensajes por página, ambos con máximo de 100. Las estadísticas de uso todavía se devuelven completas y no hay política de retención.
-5. **P2 — Suite automatizada ausente.** El repositorio no contiene pruebas backend aisladas. Las pruebas de humo de esta revisión fueron temporales y no quedaron como suite reproducible. Las llamadas de proveedores requieren pruebas simuladas para evitar credenciales y cargos.
+5. **P2 — Cobertura automatizada inicial e incompleta.** Hay pruebas unitarias aisladas para el cálculo del presupuesto por ventana de contexto. Aún falta una suite backend que cubra rutas y persistencia con proveedores simulados, sin credenciales ni cargos.
 6. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
 
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado, salida limitada y reserva para herramientas; la compatibilidad con ventanas por modelo sigue pendiente; paginación/retención de estadísticas de uso pendientes.
-- **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; pruebas backend aisladas; refactor de coordinación.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación/retención de estadísticas de uso pendientes; pruebas unitarias del contexto, con cobertura backend todavía pendiente.
+- **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; ampliar las pruebas aisladas a rutas y persistencia; refactor de coordinación.
 
 ## Verificación de esta revisión
 
@@ -124,3 +124,9 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 - Backend temporal: instalación desde dependencias fijadas de `main` y pruebas de humo con proveedores simulados — correctas. Lock: compilación universal desde las dependencias locales para Python 3.10 y posteriores, con hashes — correcta.
 - `git diff --check` del informe — correcto.
 - No se hicieron llamadas externas a modelos ni a Tavily, ni se inspeccionaron claves o bases de datos del usuario.
+
+## Seguimiento de mejoras — 2026-11-15
+
+- El presupuesto de entrada ahora consulta `context_window` para el proveedor y modelo seleccionados; cuando el dato existe, reserva hasta 2.048 tokens para la respuesta sin superar el tope global de 8.192. Si el dato no está disponible, conserva el tope global.
+- Se añadieron pruebas unitarias aisladas para ventanas desconocidas, pequeñas y grandes, y para la lectura del catálogo.
+- Verificación de seguimiento: `python -m unittest discover -s tests -v`, compilación de los módulos modificados y `git diff --check`.

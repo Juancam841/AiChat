@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from conversation_context import (
     MAX_CONTEXT_CHARACTERS,
-    MAX_CONTEXT_TOKENS,
+    get_input_token_budget,
     trim_conversation_history
 )
 
@@ -23,7 +23,7 @@ from providers import (
     ask_model_with_manual_search
 )
 
-from models import get_available_models, supports_tools
+from models import get_available_models, get_context_window, supports_tools
 from model_router import select_model
 from quota_manager import get_model_quotas, is_quota_available
 
@@ -350,10 +350,13 @@ def chat(request: ChatRequest):
         ]
         tool_context.append({"type": "browser_search"})
 
+        context_window = get_context_window(provider, model)
+        input_token_budget = get_input_token_budget(context_window)
+
         messages = trim_conversation_history(
             messages,
             max_characters=MAX_CONTEXT_CHARACTERS - len(request.message),
-            max_tokens=MAX_CONTEXT_TOKENS,
+            max_tokens=input_token_budget,
             model=f"{provider}/{model}",
             fixed_messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},

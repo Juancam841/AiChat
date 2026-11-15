@@ -1,8 +1,6 @@
 import logging
 import math
 
-from litellm import token_counter
-
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +13,20 @@ MAX_TOOL_RESULT_TOKENS = CONTEXT_OVERHEAD_RESERVE // 2
 MAX_COMPLETION_TOKENS = 2_048
 
 
+def get_input_token_budget(context_window):
+    """Cap prompt tokens to the declared model window when it is known."""
+    if context_window is None:
+        return MAX_CONTEXT_TOKENS
+    return min(
+        MAX_CONTEXT_TOKENS,
+        max(0, context_window - MAX_COMPLETION_TOKENS)
+    )
+
+
 def count_message_tokens(messages, model):
     try:
+        from litellm import token_counter
+
         return token_counter(model=model, messages=messages)
     except Exception:
         logger.debug(
