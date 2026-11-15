@@ -49,7 +49,7 @@ Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles 
 
 La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`, archivos de base de datos ni artefactos de dependencias.
 
-El chat incluye el modo **Agente de investigación**. Actívalo antes de enviar un objetivo para que el modelo compatible pueda iterar con búsqueda web y calculadora, y sintetizar un resultado con fuentes. La ejecución está limitada a 12 rondas de herramientas por mensaje; necesita una clave `TAVILY_API_KEY` para investigar en la web. En modo manual se conserva el modelo elegido, que debe admitir herramientas; con selección automática se intenta cada modelo compatible en orden si un proveedor falla.
+El chat incluye el modo **Agente de investigación**. Actívalo antes de enviar un objetivo para que el modelo compatible pueda iterar con búsqueda web y calculadora, y sintetizar un resultado con fuentes. La ejecución está limitada a 12 rondas de herramientas por modelo compatible; necesita una clave `TAVILY_API_KEY` para investigar en la web. En modo manual se conserva el modelo elegido, que debe admitir herramientas; con selección automática se intenta cada modelo compatible en orden si un proveedor falla. Si todos fallan, se busca con Tavily y se intenta sintetizar con los modelos generales restantes, aunque no admitan herramientas.
 
 En el selector, **Gratis primero** prioriza modelos gratuitos; **Mejor disponible** utiliza el orden de prioridad definido en `models.py`. La estrategia manual respeta el proveedor y el modelo seleccionados.
 

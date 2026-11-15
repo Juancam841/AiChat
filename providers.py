@@ -725,11 +725,17 @@ def ask_model_with_manual_search(provider, model, messages):
     }
 
 
-def ask_model_with_fallback(messages, strategy="free_first"):
+def ask_model_with_fallback(messages, strategy="free_first", exclude=None):
 
     candidates = get_model_candidates(
         capability="general",
-        strategy=strategy
+        strategy=strategy,
+        exclude=exclude,
+    )
+
+    logger.info(
+        "Modelos generales candidatos para fallback: %s",
+        [f"{item['provider']}/{item['model']}" for item in candidates],
     )
 
     errors = []
@@ -779,7 +785,8 @@ def ask_model_with_fallback(messages, strategy="free_first"):
 
 def ask_model_with_search_fallback(
     messages,
-    strategy="free_first"
+    strategy="free_first",
+    exclude=None,
 ):
     errors = []
 
@@ -822,7 +829,8 @@ def ask_model_with_search_fallback(
         candidates = get_model_candidates(
             capability="general",
             strategy=strategy,
-            native_web_search=True
+            native_web_search=True,
+            exclude=exclude,
         )
     except Exception as error:
         logger.warning(
@@ -935,7 +943,8 @@ def ask_model_with_search_fallback(
         # 6. Generar respuesta con fallback automático
         model_result = ask_model_with_fallback(
             messages=messages_with_context,
-            strategy=strategy
+            strategy=strategy,
+            exclude=exclude,
         )
 
         response = model_result["response"]
