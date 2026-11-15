@@ -1,6 +1,6 @@
 # Informe de arquitectura y auditoría funcional de AIChat
 
-**Revisión inicial:** 2026-11-10, commit `1b2f444` (PR #1–#8). **Reauditoría backend:** 2026-11-15, `main` en `3d57388` (PR #21–#24 integrados). Se contrastaron los hallazgos iniciales con el código actual, sin leer `.env`, credenciales ni bases de datos reales.
+**Revisión inicial:** 2026-11-10, commit `1b2f444` (PR #1–#8). **Reauditoría backend:** 2026-11-15, `main` en `3d57388` (PR #21–#24 integrados). **Actualización frontend:** `main` en `d5a8bae` (PR #26–#27 integrados). Se contrastaron los hallazgos iniciales con el código actual, sin leer `.env`, credenciales ni bases de datos reales.
 
 **Estado de dependencias:** `requirements.txt` y `requirements.lock` fijan `litellm==1.105.1`; el lock resuelve dependencias transitivas de forma universal desde Python 3.10.
 
@@ -11,7 +11,7 @@ AIChat es una aplicación con frontend React/Vite y backend FastAPI. El backend 
 La estructura fuente visible incluye:
 
 - Backend: main.py (rutas HTTP), chat_service.py (orquestación del chat), providers.py, model_router.py, models.py, config.py, quota_manager.py, usage_manager.py, database.py y módulos de herramientas.
-- Frontend: frontend/src/App.tsx, frontend/src/services/api.ts y estilos; Vite y TypeScript se configuran en frontend/.
+- Frontend: `frontend/src/App.tsx`, `frontend/src/services/api.ts` y estilos; Vite y TypeScript se configuran en `frontend/`. La interfaz usa una paleta clara verde salvia, fuentes del sistema, presentación Markdown con tarjetas de fuentes y soporte responsive.
 - Pruebas backend actuales: `tests/test_chat_routes.py`, `tests/test_context_budget.py` y `tests/test_usage_pagination.py`.
 - Los scripts `test_providers.py` y `test_groq.py`, y las copias `main_backup.py` y `models_backup.py` descritas en la revisión inicial, ya no están en el repositorio.
 
@@ -23,7 +23,7 @@ La estructura fuente visible incluye:
 4. En una conversación existente, la API limita la entrada a 12 turnos completos, 24.000 caracteres y un máximo global de 8.192 tokens estimados, contando el mensaje nuevo, el prompt del sistema y los esquemas de herramientas; para modelos con ventana declarada, reduce el presupuesto para reservar la respuesta. Reserva 2.048 tokens para resultados que se agregan después: hasta 1.024 de búsqueda y 1.024 de herramientas. Las respuestas del modelo tienen un máximo de 2.048 tokens. El historial completo permanece en SQLite.
 5. `main.py` valida la solicitud y delega el flujo a `chat_service.py`. En modo manual se respeta el modelo elegido. Si se activa búsqueda web, se intenta búsqueda nativa cuando el modelo la declara y luego Tavily; de lo contrario, un modelo compatible puede usar la calculadora. En modo automático, el router filtra modelos configurados, habilitados y dentro de cuota; `free_first` prioriza los gratuitos y `best_available` conserva el orden del catálogo. El fallback intenta candidatos posteriores si uno falla.
 6. Tras una respuesta correcta se crea una conversación nueva, si corresponde, y se guardan mensaje del usuario, respuesta, título y modelo utilizado. El backend responde con texto, modelo, proveedor y fuentes de búsqueda.
-7. La interfaz muestra Markdown, fuentes y errores. Al recuperar una conversación anterior, la API pagina los mensajes y devuelve las fuentes persistidas para cada respuesta.
+7. La interfaz presenta Markdown, código, tablas, fuentes en tarjetas y errores. Al recuperar una conversación anterior, la API pagina los mensajes y devuelve las fuentes persistidas para cada respuesta. Enter envía; Shift+Enter inserta un salto de línea.
 8. Cada llamada a proveedor registra tokens, resultado y métricas de búsqueda. `/usage` muestra agregados históricos; `/quotas` muestra el consumo del periodo configurado.
 
 ## Componentes y responsabilidades vigentes
@@ -37,7 +37,7 @@ La estructura fuente visible incluye:
 - **Persistencia:** database.py gestiona conversaciones, mensajes, índices y una migración para columnas de métricas de búsqueda.
 - **Herramientas:** tool_manager.py registra herramientas y valida argumentos con JSON Schema. tools_web_search.py implementa Tavily; tools_calculator.py evalúa expresiones mediante un subconjunto de AST.
 - **Contexto:** `conversation_context.py` limita turnos completos, caracteres y tokens estimados enviados al modelo.
-- **Frontend:** `frontend/src/App.tsx` administra catálogo, estrategia, chat, búsqueda e historial; `frontend/src/services/api.ts` centraliza las llamadas HTTP.
+- **Frontend:** `frontend/src/App.tsx` administra catálogo, estrategia, chat, búsqueda e historial; `frontend/src/services/api.ts` centraliza las llamadas HTTP. Las respuestas se renderizan con ReactMarkdown y remark-gfm; un preprocesamiento convierte etiquetas `<br>` y viñetas Unicode en saltos/listas Markdown sin habilitar HTML arbitrario.
 
 ## Hallazgos del diagnóstico original (referencia histórica)
 
@@ -100,6 +100,7 @@ La versión inicial y su evolución incorporan estos cambios respecto al estado 
 - **Herramientas:** se verificó la llamada de `/chat` al flujo de herramientas para un modelo compatible y se probó la calculadora. No se simuló el protocolo de tool-calling de cada proveedor.
 - **Contexto y cuotas:** se revisó el recorte a turnos completos y se ejercitaron los periodos UTC diarios, mensuales y acumulados. Los límites numéricos siguen en `None`.
 - **Frontend:** `npm ci`, `npm run build` y `npm run lint` terminaron correctamente en un checkout temporal de `main`.
+- **Frontend actualizado (PR #26–#27):** `npm ci`, `npm run build` y `npm run lint` terminaron correctamente. No hay suite automatizada de componentes ni pruebas de teclado o renderizado visual.
 - **Backend:** se instalaron las dependencias fijadas de `main` en un entorno temporal y pasaron pruebas de humo con `TestClient` y proveedores simulados.
 
 No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque dependen de claves externas, que no se leyeron. La verificación se hizo en Linux con Python 3.12 y Node 24, no en el entorno macOS del usuario. La API local sí respondió correctamente en las pruebas simuladas; eso no demuestra la disponibilidad de cada proveedor ni de sus modelos actuales.
@@ -110,13 +111,13 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 2. **P1 — Cuotas desactivadas por configuración.** Los periodos se calculan en UTC, pero los topes `requests` y `total_tokens` permanecen en `None`; por tanto, no se impone un límite. Definir valores requiere conocer los topes que quiere aplicar el propietario a cada modelo.
 3. **P2 — El presupuesto de entrada se adapta solo a ventanas declaradas.** Se limita la entrada a 8.192 tokens y, si el catálogo declara `context_window`, se resta el máximo de salida de 2.048 tokens antes de calcular el contexto. El recorte conserva las reservas existentes de 1.024 tokens para búsqueda y 1.024 para herramientas. Cuando LiteLLM no identifica un tokenizador, se estima por bytes UTF-8. Los modelos con `context_window: None` todavía usan el límite global y no tienen garantía de compatibilidad con su ventana real; los valores declarados también requieren mantenimiento.
 4. **P2 — Paginación y retención parciales.** El listado usa páginas de 25 conversaciones, y el detalle muestra 50 mensajes por página, ambos con máximo de 100. `/usage` conserva su respuesta histórica sin parámetros y admite páginas de hasta 100 grupos de proveedor/modelo cuando recibe `limit` y/o `offset`. No hay política de retención.
-5. **P2 — Cobertura automatizada inicial e incompleta.** Hay pruebas unitarias aisladas para el presupuesto de contexto y la paginación/agregación de estadísticas de uso, más pruebas con `TestClient` para persistencia exitosa del chat, fallo de proveedor sin registros y conversación inexistente. La cobertura todavía no incluye el resto de rutas ni escenarios de persistencia y proveedores.
+5. **P2 — Cobertura automatizada inicial e incompleta.** Hay pruebas unitarias aisladas para el presupuesto de contexto y la paginación/agregación de estadísticas de uso, más pruebas con `TestClient` para persistencia exitosa del chat, fallo de proveedor sin registros y conversación inexistente. La cobertura todavía no incluye el resto de rutas ni escenarios de persistencia y proveedores. El frontend no tiene suite automatizada para renderizado, teclado ni diseño responsive.
 6. **P3 — Separación de responsabilidades parcial.** `main.py` registra las rutas HTTP y delega la coordinación del chat a `chat_service.py`. `providers.py` todavía combina transporte, fallback, herramientas, búsqueda y contabilidad.
 
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación de estadísticas disponible de forma optativa, sin política de retención; suite aislada con pruebas unitarias y tres contratos de rutas/persistencia, pendiente ampliar escenarios y endpoints; separación HTTP/servicio para el chat completada, aunque `providers.py` mantiene responsabilidades mezcladas.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación de estadísticas disponible de forma optativa, sin política de retención; suite backend aislada con pruebas unitarias y tres contratos de rutas/persistencia, pendiente ampliar escenarios y endpoints; separación HTTP/servicio para el chat completada, aunque `providers.py` mantiene responsabilidades mezcladas; rediseño frontend implementado y validado con lint/build, pendiente cobertura automatizada de UI y verificación visual en tamaños de pantalla.
 - **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; separar transporte, selección/fallback, herramientas, búsqueda y registro de uso dentro de `providers.py`.
 
 ## Reauditoría de hallazgos iniciales — 2026-11-15
@@ -176,3 +177,21 @@ También se verificaron los riesgos estructurales iniciales: los archivos de res
 - Suite existente: 14 pruebas aprobadas en Python 3.12; no se añadieron pruebas durante esta reauditoría.
 - `compileall` para backend y pruebas, y `git diff --check` — correctos.
 - Revisión estática de rutas, selección, contexto, cuotas, persistencia, logging y contratos de búsqueda. No se leyeron credenciales ni bases de datos reales ni se invocaron proveedores externos.
+
+## Diagnóstico frontend tras el rediseño — 2026-11-15
+
+El estado revisado corresponde a `main` en `d5a8bae`, con los PR #26 y #27 integrados. La interfaz usa una paleta clara verde salvia, tipografía moderna del sistema sin descarga externa, jerarquía visual más relajada, Markdown con mejor lectura de código y tablas, y fuentes de búsqueda presentadas en tarjetas con dominio, fecha y extracto. El historial y el chat tienen reglas responsive para pantallas pequeñas.
+
+La caja de mensaje envía con Enter, conserva Shift+Enter para salto de línea, evita enviar mientras el usuario compone texto con IME y se expande según el contenido. El renderizado convierte `<br>` y viñetas Unicode comunes a Markdown antes de ReactMarkdown; no se habilitó HTML arbitrario.
+
+### Pruebas frontend pendientes
+
+- `frontend/package.json` no define un script ni un framework de pruebas frontend.
+- No hay pruebas automáticas de conversión de `<br>`/viñetas, Enter frente a Shift+Enter, composición IME, tarjetas de fuentes o layout responsive.
+- La verificación de los PR #26–#27 cubrió `npm ci`, `npm run build` y `npm run lint`; no se registró una prueba visual en navegador para distintos viewports, contraste y navegación completa por teclado.
+
+### Próximas actividades sugeridas
+
+1. Añadir pruebas de interacción para envío por teclado y normalización de respuestas sin probar proveedores reales.
+2. Revisar en navegador escritorio y móvil el ajuste de texto, tarjetas de fuentes, selectores, foco visible y contraste.
+3. Continuar el pendiente backend registrado: dividir las responsabilidades internas de `providers.py`; mantener condicionados los límites de cuota, retención y autenticación a las decisiones/configuración que faltan.
