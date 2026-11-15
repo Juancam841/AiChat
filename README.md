@@ -49,6 +49,8 @@ Las claves se leen desde variables de entorno o `.env`. Los modelos disponibles 
 
 La base SQLite se crea localmente al iniciar el backend. No se debe subir `.env`, archivos de base de datos ni artefactos de dependencias.
 
+El chat incluye el modo **Agente de investigación**. Actívalo antes de enviar un objetivo para que el modelo compatible pueda iterar con búsqueda web y calculadora, y sintetizar un resultado con fuentes. La ejecución está limitada a 12 rondas de herramientas por mensaje; necesita una clave `TAVILY_API_KEY` para investigar en la web. En modo manual se conserva el modelo elegido, que debe admitir herramientas; con selección automática se elige un modelo compatible.
+
 En el selector, **Gratis primero** prioriza modelos gratuitos; **Mejor disponible** utiliza el orden de prioridad definido en `models.py`. La estrategia manual respeta el proveedor y el modelo seleccionados.
 
 Cada mensaje admite hasta 24.000 caracteres. Al continuar una conversación, el backend cuenta el mensaje nuevo, el prompt del sistema, los esquemas de herramientas y hasta 12 turnos completos dentro de un presupuesto de entrada máximo de 8.192 tokens. Para modelos con `context_window` declarado, ajusta ese presupuesto para reservar hasta 2.048 tokens de respuesta; los modelos sin ventana conocida conservan el límite global. Además, reserva 2.048 tokens para datos añadidos durante la búsqueda y las llamadas a herramientas: hasta 1.024 para cada categoría. Si LiteLLM no identifica un tokenizador, el conteo usa una estimación basada en el tamaño UTF-8. El historial completo permanece guardado en SQLite.

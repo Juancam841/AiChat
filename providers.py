@@ -166,7 +166,8 @@ def ask_model_with_tools(
     model,
     messages,
     max_iterations=5,
-    tool_names=None
+    tool_names=None,
+    return_metadata=False
 ):
     # 1. Validar proveedor y modelo
     if provider not in MODELS:
@@ -238,6 +239,7 @@ def ask_model_with_tools(
         },
         *messages
     ]
+    search_results = []
 
     # 5. Ejecutar ciclo de herramientas
     for iteration in range(max_iterations + 1):
@@ -321,6 +323,11 @@ def ask_model_with_tools(
         )
 
         if not tool_calls:
+            if return_metadata:
+                return {
+                    "response": message.content,
+                    "results": search_results,
+                }
             return message.content
 
         # 8. Evitar ciclos infinitos
@@ -329,6 +336,17 @@ def ask_model_with_tools(
                 "Se alcanzó el límite de iteraciones de herramientas."
             )
 
+            response_text = (
+                (message.content or "")
+                + "\n\nSe alcanzó el límite de rondas de herramientas. "
+                "Este resultado puede estar incompleto; indica qué queda "
+                "pendiente para continuar."
+            )
+            if return_metadata:
+                return {
+                    "response": response_text,
+                    "results": search_results,
+                }
             return (
                 "No fue posible completar la solicitud "
                 "dentro del límite de ejecuciones de herramientas."
@@ -364,6 +382,11 @@ def ask_model_with_tools(
                     tool_name,
                     arguments
                 )
+
+                if tool_name == "web_search" and result.get("success"):
+                    search_results.extend(
+                        result.get("result", {}).get("results", [])
+                    )
 
             except Exception as error:
                 logger.exception(

@@ -10,6 +10,7 @@ export interface ChatRequest {
   model: string
   strategy: ChatStrategy
   web_search: boolean
+  agent_mode: boolean
 }
 
 export type ChatStrategy = 'manual' | 'free_first' | 'best_available'
