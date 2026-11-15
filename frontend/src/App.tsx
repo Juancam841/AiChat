@@ -32,6 +32,12 @@ function sourceHost(url: string | null | undefined) {
   }
 }
 
+function normalizeAssistantContent(content: string) {
+  return content
+    .replace(/<br\s*\/?\s*>\s*([•●▪◦‣])\s*/gi, '\n- ')
+    .replace(/<br\s*\/?\s*>/gi, '  \n')
+}
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -522,7 +528,7 @@ function App() {
                     <>
                       <div className="markdown-content">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
+                          {normalizeAssistantContent(message.content)}
                         </ReactMarkdown>
                       </div>
                       {message.results && message.results.length > 0 && (
