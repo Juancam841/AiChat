@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
     provider: str | None = None
     model: str | None = None
     web_search: bool = False
+    agent_mode: bool = False
 
 
 @app.get("/")
@@ -275,6 +276,7 @@ def chat(request: ChatRequest):
             provider=request.provider,
             model=request.model,
             web_search=request.web_search,
+            agent_mode=request.agent_mode,
         )
 
     except ConversationNotFoundError as error:

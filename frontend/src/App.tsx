@@ -47,6 +47,7 @@ function App() {
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [error, setError] = useState('')
   const [webSearch, setWebSearch] = useState(false)
+  const [agentMode, setAgentMode] = useState(false)
 
   // Referencia al contenedor de mensajes para controlar el autoscroll
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
@@ -203,7 +204,8 @@ function App() {
         provider,
         model,
         strategy,
-        web_search: webSearch
+        web_search: webSearch,
+        agent_mode: agentMode
       })
 
       setConversationId(result.conversation_id)
@@ -631,6 +633,16 @@ function App() {
               disabled={loading}
             />
             Buscar en la web
+          </label>
+
+          <label className="web-search-toggle">
+            <input
+              type="checkbox"
+              checked={agentMode}
+              onChange={event => setAgentMode(event.target.checked)}
+              disabled={loading}
+            />
+            Agente de investigación (hasta 12 rondas)
           </label>
 
           <p className="disclaimer">
