@@ -1,4 +1,5 @@
 import json
+import logging
 
 from conversation_context import (
     MAX_CONTEXT_CHARACTERS,
@@ -28,6 +29,9 @@ import tools_calculator  # noqa: F401 - registra la herramienta al importar.
 import tools_web_search  # noqa: F401 - registra la herramienta al importar.
 
 
+logger = logging.getLogger(__name__)
+
+
 class ConversationNotFoundError(Exception):
     """Raised when a chat references a conversation that does not exist."""
 
@@ -43,6 +47,7 @@ def process_chat(
     agent_mode=False,
 ):
     """Coordinate model selection, context, provider call, and persistence."""
+    agent_candidates = None
     if strategy == "manual":
         if not provider or not model:
             raise ValueError("La estrategia manual requiere proveedor y modelo.")
@@ -54,12 +59,12 @@ def process_chat(
                 "su límite local configurado."
             )
     elif agent_mode:
-        candidates = get_model_candidates(
+        agent_candidates = get_model_candidates(
             capability="general",
             strategy=strategy,
             supports_tools=True,
         )
-        selected = candidates[0]
+        selected = agent_candidates[0]
         provider = selected["provider"]
         model = selected["model"]
     else:
@@ -123,27 +128,68 @@ def process_chat(
     if agent_instruction:
         fixed_messages.append(agent_instruction)
 
-    messages = trim_conversation_history(
-        messages,
-        max_characters=MAX_CONTEXT_CHARACTERS - len(message),
-        max_tokens=get_input_token_budget(get_context_window(provider, model)),
-        model=f"{provider}/{model}",
-        fixed_messages=fixed_messages,
-    )
-    if agent_instruction:
-        messages.insert(0, agent_instruction)
-    messages.append({"role": "user", "content": message})
+    conversation_history = messages
+
+    def build_messages(selected_provider, selected_model):
+        result_messages = trim_conversation_history(
+            conversation_history,
+            max_characters=MAX_CONTEXT_CHARACTERS - len(message),
+            max_tokens=get_input_token_budget(
+                get_context_window(selected_provider, selected_model)
+            ),
+            model=f"{selected_provider}/{selected_model}",
+            fixed_messages=fixed_messages,
+        )
+        if agent_instruction:
+            result_messages.insert(0, agent_instruction)
+        result_messages.append({"role": "user", "content": message})
+        return result_messages
+
+    messages = build_messages(provider, model)
 
     search_results = []
     if agent_mode:
-        result = ask_model_with_tools(
-            provider=provider,
-            model=model,
-            messages=messages,
-            tool_names=["calculator", "web_search"],
-            max_iterations=12,
-            return_metadata=True,
-        )
+        candidates_to_try = agent_candidates or [
+            {"provider": provider, "model": model}
+        ]
+        result = None
+        failures = []
+
+        for candidate in candidates_to_try:
+            provider = candidate["provider"]
+            model = candidate["model"]
+            candidate_messages = build_messages(provider, model)
+            try:
+                result = ask_model_with_tools(
+                    provider=provider,
+                    model=model,
+                    messages=candidate_messages,
+                    tool_names=["calculator", "web_search"],
+                    max_iterations=12,
+                    return_metadata=True,
+                )
+                break
+            except Exception as error:
+                failures.append(f"{provider}/{model}: {error}")
+                logger.warning(
+                    "El modelo del agente falló; se probará el siguiente "
+                    "candidato (%s / %s): %s",
+                    provider,
+                    model,
+                    error,
+                )
+
+        if result is None:
+            attempted = "; ".join(failures)
+            if agent_candidates is None:
+                raise RuntimeError(
+                    f"Falló el modelo manual {provider}/{model}: {attempted}"
+                )
+            raise RuntimeError(
+                "Todos los modelos compatibles con herramientas fallaron. "
+                + attempted
+            )
+
         response = result["response"]
         search_results = result["results"]
     elif strategy == "manual":
