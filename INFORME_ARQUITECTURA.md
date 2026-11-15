@@ -110,13 +110,13 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 3. **P2 — El presupuesto de entrada se adapta solo a ventanas declaradas.** Se limita la entrada a 8.192 tokens y, si el catálogo declara `context_window`, se resta el máximo de salida de 2.048 tokens antes de calcular el contexto. El recorte conserva las reservas existentes de 1.024 tokens para búsqueda y 1.024 para herramientas. Cuando LiteLLM no identifica un tokenizador, se estima por bytes UTF-8. Los modelos con `context_window: None` todavía usan el límite global y no tienen garantía de compatibilidad con su ventana real; los valores declarados también requieren mantenimiento.
 4. **P2 — Paginación y retención parciales.** El listado usa páginas de 25 conversaciones, y el detalle muestra 50 mensajes por página, ambos con máximo de 100. `/usage` conserva su respuesta histórica sin parámetros y admite páginas de hasta 100 grupos de proveedor/modelo cuando recibe `limit` y/o `offset`. No hay política de retención.
 5. **P2 — Cobertura automatizada inicial e incompleta.** Hay pruebas unitarias aisladas para el presupuesto de contexto y la paginación/agregación de estadísticas de uso, más pruebas con `TestClient` para persistencia exitosa del chat, fallo de proveedor sin registros y conversación inexistente. La cobertura todavía no incluye el resto de rutas ni escenarios de persistencia y proveedores.
-6. **P3 — Responsabilidades concentradas.** `main.py` aún coordina demasiadas rutas y `providers.py` combina transporte, fallback, herramientas, búsqueda y contabilidad.
+6. **P3 — Separación de responsabilidades parcial.** `main.py` registra las rutas HTTP y delega la coordinación del chat a `chat_service.py`. `providers.py` todavía combina transporte, fallback, herramientas, búsqueda y contabilidad.
 
 ### Estado de las recomendaciones
 
 - **Resueltas en código:** búsqueda web visible; calculadora conectada para modelos compatibles; conversaciones nuevas creadas después de una respuesta exitosa; turnos, fuentes y metadatos guardados atómicamente; errores del envío reflejados correctamente en el frontend; contexto acotado; logs sin serializar la respuesta nativa completa; selector de proveedores disponibles; estrategias frontend alineadas; URL de API y orígenes CORS configurables; paginación del listado de conversaciones; reservas SQLite para cuotas concurrentes.
-- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación de estadísticas disponible de forma optativa, sin política de retención; suite aislada con pruebas unitarias y tres contratos de rutas/persistencia, pendiente ampliar escenarios y endpoints.
-- **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; refactor de coordinación.
+- **Parciales:** cuotas con periodos y reservas, pero sin valores numéricos; presupuesto de entrada acotado y adaptado a las ventanas declaradas en el catálogo, aunque varios modelos no tienen ese dato; paginación de estadísticas disponible de forma optativa, sin política de retención; suite aislada con pruebas unitarias y tres contratos de rutas/persistencia, pendiente ampliar escenarios y endpoints; separación HTTP/servicio para el chat completada, aunque `providers.py` mantiene responsabilidades mezcladas.
+- **Pendientes:** autenticación si el backend se expone fuera de loopback o una red privada; separar transporte, selección/fallback, herramientas, búsqueda y registro de uso dentro de `providers.py`.
 
 ## Verificación de esta revisión
 
@@ -130,3 +130,9 @@ No se probaron llamadas reales a Groq, Gemini, OpenRouter ni Tavily porque depen
 - El presupuesto de entrada ahora consulta `context_window` para el proveedor y modelo seleccionados; cuando el dato existe, reserva hasta 2.048 tokens para la respuesta sin superar el tope global de 8.192. Si el dato no está disponible, conserva el tope global.
 - Se añadieron pruebas unitarias aisladas para ventanas desconocidas, pequeñas y grandes, y para la lectura del catálogo.
 - Verificación de seguimiento: `python -m unittest discover -s tests -v`, compilación de los módulos modificados y `git diff --check`.
+
+## Seguimiento de separación de componentes — 2026-11-15
+
+- La ruta `/chat` ahora delega la selección de modelo, preparación del contexto, llamada al proveedor y persistencia en `chat_service.py`. La capa HTTP conserva la validación de entrada y traduce errores del servicio a los mismos códigos y cuerpos de respuesta.
+- Los tests de rutas existentes se actualizaron para simular dependencias en el nuevo módulo; no se añadieron casos.
+- La separación es parcial: la lógica interna de `providers.py` sigue pendiente de dividirse.

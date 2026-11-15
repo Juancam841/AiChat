@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import database
+import chat_service
 import main
 from fastapi.testclient import TestClient
 
@@ -20,15 +21,15 @@ class ChatRoutePersistenceTests(unittest.TestCase):
 
         self.route_patches = [
             patch.object(
-                main,
+                chat_service,
                 "get_model_quotas",
                 return_value={"groq/openai/gpt-oss-20b": {}},
             ),
-            patch.object(main, "is_quota_available", return_value=True),
-            patch.object(main, "supports_tools", return_value=False),
-            patch.object(main, "get_context_window", return_value=None),
+            patch.object(chat_service, "is_quota_available", return_value=True),
+            patch.object(chat_service, "supports_tools", return_value=False),
+            patch.object(chat_service, "get_context_window", return_value=None),
             patch.object(
-                main,
+                chat_service,
                 "trim_conversation_history",
                 side_effect=lambda messages, **kwargs: messages,
             ),
@@ -65,7 +66,9 @@ class ChatRoutePersistenceTests(unittest.TestCase):
             connection.close()
 
     def test_successful_manual_chat_persists_conversation_and_turn(self):
-        with patch.object(main, "ask_model", return_value="Respuesta simulada"):
+        with patch.object(
+            chat_service, "ask_model", return_value="Respuesta simulada"
+        ):
             response = self.client.post("/chat", json=self._chat_payload())
 
         self.assertEqual(response.status_code, 200)
@@ -88,7 +91,7 @@ class ChatRoutePersistenceTests(unittest.TestCase):
     def test_provider_failure_returns_502_without_persisting(self):
         with self.assertLogs("main", level="ERROR"):
             with patch.object(
-                main,
+                chat_service,
                 "ask_model",
                 side_effect=RuntimeError("offline"),
             ):
