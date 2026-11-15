@@ -1,41 +1,22 @@
-import json
 import logging
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from conversation_context import (
-    MAX_CONTEXT_CHARACTERS,
-    get_input_token_budget,
-    trim_conversation_history
-)
+from conversation_context import MAX_CONTEXT_CHARACTERS
+from chat_service import ConversationNotFoundError, process_chat
 
 from usage_manager import get_usage_summary, get_usage_summary_page
 from config import CORS_ORIGINS, get_configured_providers
 
-from providers import (
-    SYSTEM_PROMPT,
-    ask_model,
-    ask_model_with_tools,
-    ask_model_with_fallback,
-    ask_model_with_search_fallback,
-    ask_model_with_manual_search
-)
-
-from models import get_available_models, get_context_window, supports_tools
-from model_router import select_model
-from quota_manager import get_model_quotas, is_quota_available
-
-import tools_calculator
-import tools_web_search
+from models import get_available_models
+from quota_manager import get_model_quotas
 
 from tool_manager import get_available_tools
 
 from database import (
     initialize_database,
-    save_turn,
-    get_conversation_messages,
     get_conversation_message_page,
     get_conversation,
     get_all_conversations,
@@ -287,195 +268,20 @@ def remove_conversation(conversation_id: str):
 @app.post("/chat")
 def chat(request: ChatRequest):
     try:
-
-        # 1. Seleccionar proveedor y modelo
-
-        if request.strategy == "manual":
-
-            if not request.provider or not request.model:
-                raise ValueError(
-                    "La estrategia manual requiere proveedor y modelo."
-                )
-
-            provider = request.provider
-            model = request.model
-
-            # Validar cuota local del modelo manual
-
-            quotas = get_model_quotas()
-            quota = quotas.get(
-                f"{provider}/{model}"
-            )
-
-            if not is_quota_available(quota):
-                raise ValueError(
-                    f"El modelo {provider}/{model} alcanzó "
-                    "su límite local configurado."
-                )
-
-        else:
-
-            selected = select_model(
-                capability="general",
-                strategy=request.strategy
-            )
-
-            provider = selected["provider"]
-            model = selected["model"]
-
-        # 2. Recuperar conversación existente o preparar una nueva
-
-        if request.conversation_id is None:
-            conversation_id = None
-            messages = []
-
-        else:
-
-            conversation_id = request.conversation_id
-
-            conversation = get_conversation(
-                conversation_id
-            )
-
-            if conversation is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="La conversación no existe."
-                )
-
-            messages = get_conversation_messages(conversation_id)
-
-        # 4. Limitar el contexto enviado al modelo, sin borrar el historial guardado
-        tool_context = [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"]
-                }
-            }
-            for tool in get_available_tools()
-        ]
-        tool_context.append({"type": "browser_search"})
-
-        context_window = get_context_window(provider, model)
-        input_token_budget = get_input_token_budget(context_window)
-
-        messages = trim_conversation_history(
-            messages,
-            max_characters=MAX_CONTEXT_CHARACTERS - len(request.message),
-            max_tokens=input_token_budget,
-            model=f"{provider}/{model}",
-            fixed_messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": request.message},
-                {
-                    "role": "system",
-                    "content": json.dumps(tool_context, ensure_ascii=False)
-                }
-            ]
+        return process_chat(
+            conversation_id=request.conversation_id,
+            message=request.message,
+            strategy=request.strategy,
+            provider=request.provider,
+            model=request.model,
+            web_search=request.web_search,
         )
 
-        # 5. Agregar mensaje del usuario
-
-        messages.append({
-            "role": "user",
-            "content": request.message
-        })
-
-        # 6. Consultar modelo
-
-        search_results = []
-
-        if request.strategy == "manual":
-
-            if request.web_search:
-
-                result = ask_model_with_manual_search(
-                    provider=provider,
-                    model=model,
-                    messages=messages
-                )
-
-                response = result["response"]["answer"]
-
-                search_results = result["response"]["results"]
-
-            else:
-                if supports_tools(provider, model):
-                    response = ask_model_with_tools(
-                        provider=provider,
-                        model=model,
-                        messages=messages,
-                        tool_names=["calculator"]
-                    )
-                else:
-                    response = ask_model(
-                        provider=provider,
-                        model=model,
-                        messages=messages
-                    )
-
-        else:
-
-            if request.web_search:
-
-                result = ask_model_with_search_fallback(
-                    messages=messages,
-                    strategy=request.strategy
-                )
-
-                response = result["response"]["answer"]
-
-                search_results = result["response"]["results"]
-
-                provider = result["provider"]
-                model = result["model"]
-
-            else:
-
-                result = ask_model_with_fallback(
-                    messages=messages,
-                    strategy=request.strategy
-                )
-
-                response = result["response"]
-                provider = result["provider"]
-                model = result["model"]
-
-        title = None
-        if request.conversation_id is None:
-            title = " ".join(
-                request.message.strip().split()
-            )
-
-            if len(title) > 50:
-                title = title[:47].rstrip() + "..."
-
-        # Crear la conversación y guardar todo el turno en una transacción.
-        conversation_id = save_turn(
-            conversation_id,
-            request.message,
-            response,
-            results=search_results,
-            provider=provider,
-            model=model,
-            title=title
-        )
-
-        # 11. Devolver respuesta y fuentes
-
-        return {
-            "conversation_id": conversation_id,
-            "response": response,
-            "results": search_results,
-            "model": model,
-            "provider": provider
-        }
-
-    except HTTPException:
-        raise
+    except ConversationNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="La conversación no existe."
+        ) from error
 
     except ValueError as e:
 
