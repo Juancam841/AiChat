@@ -59,12 +59,16 @@ def process_chat(
                 "su límite local configurado."
             )
     elif agent_mode:
-        agent_candidates = get_model_candidates(
+        general_candidates = get_model_candidates(
             capability="general",
             strategy=strategy,
-            supports_tools=True,
         )
-        selected = agent_candidates[0]
+        agent_candidates = [
+            candidate
+            for candidate in general_candidates
+            if candidate.get("supports_tools")
+        ]
+        selected = (agent_candidates or general_candidates)[0]
         provider = selected["provider"]
         model = selected["model"]
     else:
@@ -72,7 +76,11 @@ def process_chat(
         provider = selected["provider"]
         model = selected["model"]
 
-    if agent_mode and not supports_tools(provider, model):
+    if (
+        agent_mode
+        and strategy == "manual"
+        and not supports_tools(provider, model)
+    ):
         raise ValueError(
             f"El modelo {provider}/{model} no admite herramientas. "
             "Selecciona un modelo compatible o usa selección automática."
@@ -149,11 +157,21 @@ def process_chat(
 
     search_results = []
     if agent_mode:
-        candidates_to_try = agent_candidates or [
-            {"provider": provider, "model": model}
-        ]
+        candidates_to_try = (
+            agent_candidates
+            if agent_candidates is not None
+            else [{"provider": provider, "model": model}]
+        )
         result = None
         failures = []
+
+        logger.info(
+            "Candidatos del agente con herramientas: %s",
+            [
+                f"{candidate['provider']}/{candidate['model']}"
+                for candidate in candidates_to_try
+            ],
+        )
 
         for candidate in candidates_to_try:
             provider = candidate["provider"]
@@ -185,13 +203,32 @@ def process_chat(
                 raise RuntimeError(
                     f"Falló el modelo manual {provider}/{model}: {attempted}"
                 )
-            raise RuntimeError(
-                "Todos los modelos compatibles con herramientas fallaron. "
-                + attempted
-            )
 
-        response = result["response"]
-        search_results = result["results"]
+            excluded_models = [
+                (candidate["provider"], candidate["model"])
+                for candidate in agent_candidates
+            ]
+            logger.warning(
+                "Se agotaron los modelos con herramientas; se probará "
+                "búsqueda web con los modelos generales restantes."
+            )
+            fallback_result = ask_model_with_search_fallback(
+                messages=messages,
+                strategy=strategy,
+                exclude=excluded_models,
+            )
+            response = (
+                "No se pudo completar la investigación con modelos que "
+                "admiten herramientas. Esta respuesta usa búsqueda web "
+                "como fallback.\n\n"
+                + fallback_result["response"]["answer"]
+            )
+            search_results = fallback_result["response"]["results"]
+            provider = fallback_result["provider"]
+            model = fallback_result["model"]
+        else:
+            response = result["response"]
+            search_results = result["results"]
     elif strategy == "manual":
         if web_search:
             result = ask_model_with_manual_search(
