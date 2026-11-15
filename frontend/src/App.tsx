@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState, type FormEvent, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ChangeEvent, type KeyboardEvent } from 'react'
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,6 +22,16 @@ import type {
 
 import './App.css'
 
+function sourceHost(url: string | null | undefined) {
+  if (!url) return 'Fuente web'
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -34,7 +44,16 @@ function App() {
 
   // Referencia al contenedor de mensajes para controlar el autoscroll
   const chatMessagesRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const previousScrollRef = useRef<{ height: number; top: number } | null>(null)
+
+  useEffect(() => {
+    const composer = composerRef.current
+    if (!composer) return
+
+    composer.style.height = 'auto'
+    composer.style.height = `${Math.min(composer.scrollHeight, 180)}px`
+  }, [input])
 
   // Desplazar automáticamente hasta el último mensaje
   useEffect(() => {
@@ -228,6 +247,17 @@ function App() {
     }
   }
 
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+  }
+
   // Abrir una conversación anterior
   async function openConversation(id: string) {
     if (loading || loadingOlderMessages) return
@@ -307,8 +337,11 @@ function App() {
       <aside className="sidebar">
 
         <div className="sidebar-header">
-          <h2>Maris AI Chat</h2>
-          <span>Multi-Model Platform</span>
+          <div className="brand-mark" aria-hidden="true">✦</div>
+          <div>
+            <h2>Maris</h2>
+            <span>Tu espacio de ideas</span>
+          </div>
         </div>
 
         <button
@@ -316,12 +349,13 @@ function App() {
           onClick={newConversation}
           disabled={loadingOlderMessages}
         >
-          + Nueva conversación
+          <span className="new-chat-icon" aria-hidden="true">＋</span>
+          <span>Nueva conversación</span>
         </button>
 
         <div className="history-section">
 
-          <p className="section-title">HISTORIAL</p>
+          <p className="section-title">TUS CONVERSACIONES</p>
 
           {historyLoading ? (
             <p className="empty-history">
@@ -378,8 +412,8 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
-          <span>Configuración</span>
-          <span>Perfil</span>
+          <span className="sidebar-footer-mark" aria-hidden="true">●</span>
+          <span>Hecho para explorar</span>
         </div>
 
       </aside>
@@ -388,7 +422,10 @@ function App() {
 
         <header className="topbar">
 
-          <h3>Mi espacio de trabajo</h3>
+          <div className="topbar-title">
+            <span className="topbar-eyebrow">MARIS AI</span>
+            <h3>Una conversación a la vez</h3>
+          </div>
 
           <div className="model-selector">
 
@@ -450,10 +487,11 @@ function App() {
           {messages.length === 0 ? (
 
             <div className="welcome-message">
-              <h1>¿En qué puedo ayudarte?</h1>
+              <span className="welcome-kicker">PIENSA · CREA · DESCUBRE</span>
+              <h1>¿Qué tienes en mente?</h1>
               <p>
-                Tu espacio de inteligencia artificial multimodelo.
-                Elige un modelo y comienza una conversación.
+                Pregunta, explora una idea o empieza algo nuevo.
+                Yo te sigo el ritmo.
               </p>
             </div>
 
@@ -476,8 +514,8 @@ function App() {
                   key={message.id ?? `pending-${message.role}-${index}`}
                   className={`message ${message.role}`}
                 >
-                  <strong>
-                    {message.role === 'user' ? 'Tú' : 'AI'}
+                  <strong className="message-author">
+                    {message.role === 'user' ? 'Tú' : 'Maris'}
                   </strong>
 
                   {message.role === 'assistant' ? (
@@ -489,19 +527,29 @@ function App() {
                       </div>
                       {message.results && message.results.length > 0 && (
                         <div className="search-sources">
-                          <strong>Fuentes</strong>
-                          <ul>
+                          <div className="sources-heading">
+                            <strong>Fuentes consultadas</strong>
+                            <span>{message.results.length}</span>
+                          </div>
+                          <div className="source-grid">
                             {message.results.map((result, resultIndex) => (
-                              <li key={`${result.url}-${resultIndex}`}>
+                              <article className="source-card" key={`${result.url}-${resultIndex}`}>
+                                <div className="source-meta">
+                                  <span className="source-link-mark" aria-hidden="true">↗</span>
+                                  <span>{sourceHost(result.url)}</span>
+                                  {result.published_date && <span>· {result.published_date}</span>}
+                                </div>
                                 {result.url ? (
                                   <a href={result.url} target="_blank" rel="noopener noreferrer">
-                                    {result.title || result.url}
+                                    {result.title || sourceHost(result.url)}
                                   </a>
-                                ) : (result.title || 'Fuente')}
-                                {result.published_date && <span> · {result.published_date}</span>}
-                              </li>
+                                ) : (
+                                  <span className="source-title">{result.title || 'Fuente'}</span>
+                                )}
+                                {result.content && <p>{result.content}</p>}
+                              </article>
                             ))}
-                          </ul>
+                          </div>
                         </div>
                       )}
                     </>
@@ -512,9 +560,9 @@ function App() {
               ))}
 
               {loading && (
-                <div className="message assistant">
-                  <strong>AI</strong>
-                  <p>Generando respuesta...</p>
+                <div className="message assistant thinking-message" role="status" aria-live="polite">
+                  <strong className="message-author">Maris</strong>
+                  <p>Preparando una respuesta<span className="thinking-dots" aria-hidden="true">…</span></p>
                 </div>
               )}
 
@@ -540,17 +588,21 @@ function App() {
           >
 
             <textarea
+              ref={composerRef}
               placeholder="Escribe tu mensaje..."
+              aria-label="Escribe tu mensaje"
               rows={1}
               maxLength={24000}
               value={input}
               onChange={event => setInput(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
               disabled={loading}
             />
 
             <button
               className="send-button"
               type="submit"
+              aria-label="Enviar mensaje"
               disabled={
                 loading ||
                 !input.trim() ||
@@ -562,6 +614,8 @@ function App() {
             </button>
 
           </form>
+
+          <div className="composer-hint">Enter para enviar <span>·</span> Shift+Enter para salto de línea</div>
 
           <label className="web-search-toggle">
             <input
