@@ -11,7 +11,7 @@ from conversation_context import (
     trim_conversation_history
 )
 
-from usage_manager import get_usage_summary
+from usage_manager import get_usage_summary, get_usage_summary_page
 from config import CORS_ORIGINS, get_configured_providers
 
 from providers import (
@@ -141,13 +141,22 @@ def models(provider: str = None):
 
 
 @app.get("/usage")
-def usage():
+def usage(
+    limit: int | None = Query(default=None, ge=1, le=100),
+    offset: int | None = Query(default=None, ge=0)
+):
     try:
-        summary = get_usage_summary()
+        if limit is None and offset is None:
+            return {
+                "usage": get_usage_summary()
+            }
 
-        return {
-            "usage": summary
-        }
+        page_limit = limit if limit is not None else 25
+        page_offset = offset if offset is not None else 0
+        return get_usage_summary_page(
+            limit=page_limit,
+            offset=page_offset
+        )
 
     except Exception:
         logger.exception(

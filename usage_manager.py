@@ -109,6 +109,73 @@ def get_usage_summary(since=None):
         connection.close()
 
 
+def get_usage_summary_page(limit=25, offset=0, since=None):
+    """Return one stable page of aggregated usage and its total group count."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("limit debe ser un entero entre 1 y 100.")
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        raise ValueError("offset debe ser un entero mayor o igual a 0.")
+
+    connection = get_connection()
+
+    try:
+        where_clause = " WHERE created_at >= ?" if since is not None else ""
+        filter_parameters = (since,) if since is not None else ()
+
+        total = connection.execute(f"""
+            SELECT COUNT(*)
+            FROM (
+                SELECT provider, model
+                FROM usage_records
+                {where_clause}
+                GROUP BY provider, model
+            )
+        """, filter_parameters).fetchone()[0]
+
+        rows = connection.execute(f"""
+            SELECT
+                provider,
+                model,
+                COUNT(*) AS requests,
+                SUM(success) AS successful,
+                SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed,
+                SUM(prompt_tokens) AS prompt_tokens,
+                SUM(completion_tokens) AS completion_tokens,
+                SUM(total_tokens) AS total_tokens,
+                SUM(web_search_requests) AS web_search_requests,
+                SUM(browser_open_requests) AS browser_open_requests
+            FROM usage_records
+            {where_clause}
+            GROUP BY provider, model
+            ORDER BY provider, model
+            LIMIT ? OFFSET ?
+        """, (*filter_parameters, limit, offset)).fetchall()
+
+        usage = {
+            f"{row['provider']}/{row['model']}": {
+                "requests": row["requests"],
+                "successful": row["successful"],
+                "failed": row["failed"],
+                "prompt_tokens": row["prompt_tokens"],
+                "completion_tokens": row["completion_tokens"],
+                "total_tokens": row["total_tokens"],
+                "web_search_requests": row["web_search_requests"],
+                "browser_open_requests": row["browser_open_requests"]
+            }
+            for row in rows
+        }
+        return {
+            "usage": usage,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(usage) < total
+        }
+
+    finally:
+        connection.close()
+
+
 def get_active_reservation_summary(since=None):
     now = datetime.now(timezone.utc).isoformat()
     connection = get_connection()
